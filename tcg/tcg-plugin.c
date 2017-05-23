@@ -772,6 +772,7 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
     tpi_init = dlsym(handle, "tpi_init");
     if (!tpi_init) {
         fprintf(stderr, "plugin: error: can't resolve 'tpi_init' function in plugin at %s: %s\n", path, dlerror());
+        exit(EXIT_FAILURE);
         goto error;
     }
 
@@ -906,6 +907,8 @@ error:
         dlclose(handle);
 
     memset(tpi, 0, sizeof(*tpi));
+
+    abort();
 
     return;
 }
