@@ -283,11 +283,15 @@ static bool get_cache_misses(const TCGPluginInterface *tpi, const char *name,
 
     *value = 0;
 
-    for (int type_idx = 0; type_idx < TYPE_NUM; type_idx++) {
-        for (int cache_idx = 0; cache_idx < caches_num; cache_idx++) {
-            double misses =
-                caches_list[cache_idx]->miss[index2dinero(type_idx)];
-            *value += misses;
+    {
+        int type_idx;
+        int cache_idx;
+        for (type_idx = 0; type_idx < TYPE_NUM; type_idx++) {
+            for (cache_idx = 0; cache_idx < caches_num; cache_idx++) {
+                double misses =
+                    caches_list[cache_idx]->miss[index2dinero(type_idx)];
+                *value += misses;
+            }
         }
     }
 

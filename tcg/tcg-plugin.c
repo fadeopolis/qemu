@@ -134,17 +134,20 @@ static const char *param_type_to_string(enum TPI_PARAM_TYPE type)
 
 TCGPluginInterface *tpi_find_plugin(const char *name, uint32_t id)
 {
-    for (GList *l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
-        TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (name)
-        {
-            if (strstr(tpi->name, name) != NULL)
-                return tpi;
-        }
-        else
-        {
-            if (tpi->id == id)
-                return tpi;
+    {
+        GList *l;
+        for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
+            TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
+            if (name)
+            {
+                if (strstr(tpi->name, name) != NULL)
+                    return tpi;
+            }
+            else
+            {
+                if (tpi->id == id)
+                    return tpi;
+            }
         }
     }
 
@@ -339,19 +342,23 @@ static bool command_get_plugins(char **answer)
     g_string_append(res, "[");
 
     bool first = true;
-    for (GList *l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
-        const TCGPluginInterface *tpi = (const TCGPluginInterface *)l->data;
-        if (!first) {
-            g_string_append(res, ",");
-        } else {
-            first = false;
+
+    {
+        GList* l;
+        for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
+            const TCGPluginInterface *tpi = (const TCGPluginInterface *)l->data;
+            if (!first) {
+                g_string_append(res, ",");
+            } else {
+                first = false;
+            }
+            g_string_append_printf(res, "{\"name\": \"%s\","
+                                        "\"id\": %d,"
+                                        "\"active\": %s}",
+                                          tpi->name,
+                                          tpi->id,
+                                          tpi->_active ? "true" : "false");
         }
-        g_string_append_printf(res, "{\"name\": \"%s\","
-                                    "\"id\": %d,"
-                                    "\"active\": %s}",
-                                      tpi->name,
-                                      tpi->id,
-                                      tpi->_active ? "true" : "false");
     }
 
     g_string_append(res, "]");
@@ -408,12 +415,15 @@ static bool handle_command(enum TPI_PLUGIN_COMMAND command_type, char **answer,
         uint32_t plugin_id = -1;
 
         bool name_is_id = true;
-        for (const char *it = plugin_name; it && *it; ++it)
         {
-            if (!isdigit(*it))
+            const char *it;
+            for (it = plugin_name; it && *it; ++it)
             {
-                name_is_id = false;
-                break;
+                if (!isdigit(*it))
+                {
+                    name_is_id = false;
+                    break;
+                }
             }
         }
 
@@ -1509,8 +1519,11 @@ bool tpi_get_param_string(const TCGPluginInterface *tpi, const char *name,
 
 void tcg_plugin_initialize_all(void)
 {
-    for (GList *l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
-        TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        tcg_plugin_initialize(tpi);
+    {
+        GList *l;
+        for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
+            TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
+            tcg_plugin_initialize(tpi);
+        }
     }
 }
