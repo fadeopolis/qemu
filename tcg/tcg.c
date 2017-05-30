@@ -44,6 +44,7 @@
 #include "exec/exec-all.h"
 
 #include "tcg-op.h"
+#include "tcg-plugin.h"
 
 #if UINTPTR_MAX == UINT32_MAX
 # define ELF_CLASS  ELFCLASS32
@@ -880,6 +881,18 @@ void tcg_gen_callN(TCGContext *s, void *func, TCGArg ret,
     s->gen_next_op_idx = i + 1;
     s->gen_next_parm_idx = pi;
 
+    {
+        // tcg_defs[INDEX_op_call].cargs == 3
+        // but that is wrong, just read the above code, it only adds (func & flags)
+        const size_t nb_cargs = 2;
+        const size_t nb_args  = real_args + nb_rets + nb_cargs;
+
+        tcg_debug_assert(nb_args == (pi - pi_first));
+
+        tcg_plugin_after_gen_opc(&s->gen_op_buf[i],
+                                 &s->gen_opparam_buf[s->gen_next_parm_idx - nb_args],
+                                 nb_args);
+    }
 #if defined(__sparc__) && !defined(__arch64__) \
     && !defined(CONFIG_TCG_INTERPRETER)
     /* Free all of the parts we allocated above.  */
@@ -1202,7 +1215,7 @@ void tcg_dump_op(TCGContext *s, const TCGOp *const op, FILE *dst)
 #else
                 a = args[i];
 #endif
-                qemu_log(" " TARGET_FMT_lx, a);
+                fprintf(dst, " " TARGET_FMT_lx, a);
             }
         } else if (c == INDEX_op_call) {
             /* variable number of arguments */
@@ -1215,7 +1228,7 @@ void tcg_dump_op(TCGContext *s, const TCGOp *const op, FILE *dst)
               tcg_find_helper(s, args[nb_oargs + nb_iargs]),
               args[nb_oargs + nb_iargs + 1], nb_oargs);
             for (i = 0; i < nb_oargs; i++) {
-                qemu_log(",%s", tcg_get_arg_str_idx(s, buf, sizeof(buf),
+                fprintf(dst, ",%s", tcg_get_arg_str_idx(s, buf, sizeof(buf),
                                                     args[i]));
             }
             for (i = 0; i < nb_iargs; i++) {
@@ -1224,7 +1237,7 @@ void tcg_dump_op(TCGContext *s, const TCGOp *const op, FILE *dst)
                 if (arg != TCG_CALL_DUMMY_ARG) {
                     t = tcg_get_arg_str_idx(s, buf, sizeof(buf), arg);
                 }
-                qemu_log(",%s", t);
+                fprintf(dst, ",%s", t);
             }
         } else {
             fprintf(dst, " %s ", def->name);
