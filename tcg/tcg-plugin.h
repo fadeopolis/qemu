@@ -493,6 +493,13 @@ extern bool tpi_get_param_double(const TCGPluginInterface *tpi,
                                  const char *name, double *value);
 
 /*
+ * parse value_str and set param with the result.
+ */
+extern bool tpi_set_param_from_string(const TCGPluginInterface *tpi,
+                                      const char *param_name,
+                                      const char *value_str, char **error);
+
+/*
  * Guest to host address and loads.
  */
 static inline uint64_t tpi_guest_ptr(const TCGPluginInterface *tpi, uint64_t guest_address);

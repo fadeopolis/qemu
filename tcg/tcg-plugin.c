@@ -334,6 +334,15 @@ end:
     return accepted_value && !bad_format;
 }
 
+bool tpi_set_param_from_string(const TCGPluginInterface *tpi,
+                               const char *param_name,
+                               const char *value_str, char **error)
+{
+    assert(value_str);
+
+    return command_set_parameter(tpi, error, param_name, value_str);
+}
+
 /* return list of plugins and their status */
 static bool command_get_plugins(char **answer)
 {
