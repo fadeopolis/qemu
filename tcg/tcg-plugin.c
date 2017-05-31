@@ -40,6 +40,7 @@
 #include <libgen.h>  /* dirname(3), */
 #include <stdarg.h>  /* va_arg(3) */
 #include <inttypes.h>
+#include <unistd.h>  /* stat(2) */
 
 #include "tcg.h"
 #include "tcg-op.h"
@@ -708,13 +709,14 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
 
     exec_dir= qemu_get_exec_dir();
 
-    /* Check if "name" refers to an installed plugin (short form).  */
-    if (tpi->name[0] != '.' && tpi->name[0] != '/' &&
+    /* Check if "name" refers to an installed/compiled plugin (short form).  */
+    if (tpi->name[0] != '.' && strchr(tpi->name, '/') == NULL &&
         exec_dir != NULL && exec_dir[0] == '/') {
         char *prefix;
         const char *format;
         size_t size;
 
+        /* look for installed plugin */
         prefix = dirname(exec_dir);
         format = "%s/libexec/" TARGET_NAME "/" EMULATION_MODE "/tcg-plugin-%s.so";
         size = strlen(format) + strlen(prefix) - strlen("%s") +
@@ -722,7 +724,34 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
         path = g_malloc0(size * sizeof(char));
         snprintf(path, size, format, prefix, tpi->name);
         g_free(exec_dir);
-    } else {
+
+        struct stat buf;
+        if (stat(path, &buf) != 0)
+        {
+            /* look for compiled plugin */
+            char *exe_path = NULL;
+#ifdef __linux__
+            exe_path = realpath("/proc/self/exe", NULL);
+#endif
+            assert(exe_path);
+
+            prefix = dirname(exe_path);
+            format = "%s/tcg-plugin-%s.so";
+            size = strlen(format) + strlen(prefix) +
+                   strlen(tpi->name) - 2*strlen("%s") + 1;
+            snprintf(path, size, format, prefix, tpi->name);
+
+            free(exe_path);
+        }
+
+        if (stat(path, &buf) != 0) /* plugin was not found installed/compiled */
+        {
+            g_free(path);
+            path = NULL;
+        }
+    }
+
+    if (!path) {
         path = g_strdup(tpi->name);
     }
     tpi->path_name = path;
@@ -791,7 +820,6 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
     tpi_init = dlsym(handle, "tpi_init");
     if (!tpi_init) {
         fprintf(stderr, "plugin: error: can't resolve 'tpi_init' function in plugin at %s: %s\n", path, dlerror());
-        exit(EXIT_FAILURE);
         goto error;
     }
 
@@ -927,7 +955,7 @@ error:
 
     memset(tpi, 0, sizeof(*tpi));
 
-    abort();
+    exit(EXIT_FAILURE);
 
     return;
 }
