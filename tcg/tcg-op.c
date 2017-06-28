@@ -42,6 +42,10 @@ extern TCGv_i32 TCGV_HIGH_link_error(TCGv_i64);
 #define TCGV_HIGH TCGV_HIGH_link_error
 #endif
 
+static inline void TCG_PLUGIN_PRE_GEN_OPC(TCGOpcode opcode, TCGArg *opargs, uint8_t nb_args)
+{
+    tcg_plugin_before_gen_opc(opcode, opargs, nb_args);
+}
 
 /* Local tcg-plugin after_gen_opc helpers. */
 static inline void TCG_PLUGIN_POST_GEN_OPC(TCGContext *ctx, size_t nb_args)
@@ -81,6 +85,8 @@ void tcg_gen_op1(TCGContext *ctx, TCGOpcode opc, TCGArg a1)
     ctx->gen_next_parm_idx = pi + 1;
     ctx->gen_opparam_buf[pi] = a1;
 
+    TCG_PLUGIN_PRE_GEN_OPC(opc, &ctx->gen_opparam_buf[pi], 1);
+
     tcg_emit_op(ctx, opc, pi);
 
     TCG_PLUGIN_POST_GEN_OPC(ctx, 1);
@@ -94,6 +100,8 @@ void tcg_gen_op2(TCGContext *ctx, TCGOpcode opc, TCGArg a1, TCGArg a2)
     ctx->gen_next_parm_idx = pi + 2;
     ctx->gen_opparam_buf[pi + 0] = a1;
     ctx->gen_opparam_buf[pi + 1] = a2;
+
+    TCG_PLUGIN_PRE_GEN_OPC(opc, &ctx->gen_opparam_buf[pi], 2);
 
     tcg_emit_op(ctx, opc, pi);
 
@@ -111,6 +119,8 @@ void tcg_gen_op3(TCGContext *ctx, TCGOpcode opc, TCGArg a1,
     ctx->gen_opparam_buf[pi + 1] = a2;
     ctx->gen_opparam_buf[pi + 2] = a3;
 
+    TCG_PLUGIN_PRE_GEN_OPC(opc, &ctx->gen_opparam_buf[pi], 3);
+
     tcg_emit_op(ctx, opc, pi);
 
     TCG_PLUGIN_POST_GEN_OPC(ctx, 3);
@@ -127,6 +137,8 @@ void tcg_gen_op4(TCGContext *ctx, TCGOpcode opc, TCGArg a1,
     ctx->gen_opparam_buf[pi + 1] = a2;
     ctx->gen_opparam_buf[pi + 2] = a3;
     ctx->gen_opparam_buf[pi + 3] = a4;
+
+    TCG_PLUGIN_PRE_GEN_OPC(opc, &ctx->gen_opparam_buf[pi], 4);
 
     tcg_emit_op(ctx, opc, pi);
 
@@ -146,6 +158,8 @@ void tcg_gen_op5(TCGContext *ctx, TCGOpcode opc, TCGArg a1,
     ctx->gen_opparam_buf[pi + 3] = a4;
     ctx->gen_opparam_buf[pi + 4] = a5;
 
+    TCG_PLUGIN_PRE_GEN_OPC(opc, &ctx->gen_opparam_buf[pi], 5);
+
     tcg_emit_op(ctx, opc, pi);
 
     TCG_PLUGIN_POST_GEN_OPC(ctx, 5);
@@ -164,6 +178,8 @@ void tcg_gen_op6(TCGContext *ctx, TCGOpcode opc, TCGArg a1, TCGArg a2,
     ctx->gen_opparam_buf[pi + 3] = a4;
     ctx->gen_opparam_buf[pi + 4] = a5;
     ctx->gen_opparam_buf[pi + 5] = a6;
+
+    TCG_PLUGIN_PRE_GEN_OPC(opc, &ctx->gen_opparam_buf[pi], 6);
 
     tcg_emit_op(ctx, opc, pi);
 

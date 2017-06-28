@@ -864,6 +864,20 @@ void tcg_gen_callN(TCGContext *s, void *func, TCGArg ret,
     tcg_debug_assert(i < OPC_BUF_SIZE);
     tcg_debug_assert(pi <= OPPARAM_BUF_SIZE);
 
+    s->gen_next_op_idx = i + 1;
+    s->gen_next_parm_idx = pi;
+
+    // tcg_defs[INDEX_op_call].cargs == 3
+    // but that is wrong, just read the above code, it only adds (func & flags)
+    const size_t  nb_cargs = 2;
+    const size_t  nb_args  = real_args + nb_rets + nb_cargs;
+    TCGArg *const args_ptr = &s->gen_opparam_buf[s->gen_next_parm_idx - nb_args];
+
+    tcg_debug_assert(nb_args == (pi - pi_first));
+
+    tcg_plugin_before_gen_opc(INDEX_op_call, args_ptr, nb_args);
+
+
     /* Set links for sequential allocation during translation.  */
     s->gen_op_buf[i] = (TCGOp){
         .opc = INDEX_op_call,
@@ -878,20 +892,9 @@ void tcg_gen_callN(TCGContext *s, void *func, TCGArg ret,
     tcg_debug_assert(s->gen_op_buf[i].calli == real_args);
 
     s->gen_op_buf[0].prev = i;
-    s->gen_next_op_idx = i + 1;
-    s->gen_next_parm_idx = pi;
 
     {
-        // tcg_defs[INDEX_op_call].cargs == 3
-        // but that is wrong, just read the above code, it only adds (func & flags)
-        const size_t nb_cargs = 2;
-        const size_t nb_args  = real_args + nb_rets + nb_cargs;
-
-        tcg_debug_assert(nb_args == (pi - pi_first));
-
-        tcg_plugin_after_gen_opc(&s->gen_op_buf[i],
-                                 &s->gen_opparam_buf[s->gen_next_parm_idx - nb_args],
-                                 nb_args);
+        tcg_plugin_after_gen_opc(&s->gen_op_buf[i], args_ptr, nb_args);
     }
 #if defined(__sparc__) && !defined(__arch64__) \
     && !defined(CONFIG_TCG_INTERPRETER)

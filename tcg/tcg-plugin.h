@@ -53,6 +53,7 @@
     void tcg_plugin_cpus_stopped(void);
     void tcg_plugin_before_gen_tb(CPUState *env, TranslationBlock *tb);
     void tcg_plugin_after_gen_tb(CPUState *env, TranslationBlock *tb);
+    void tcg_plugin_before_gen_opc(TCGOpcode opcode, TCGArg *opargs, uint8_t nb_args);
     void tcg_plugin_after_gen_opc(TCGOp *opcode, TCGArg *opargs, uint8_t nb_args);
     const char *tcg_plugin_get_filename(void);
 #else
@@ -62,6 +63,7 @@
 #   define tcg_plugin_cpus_stopped()
 #   define tcg_plugin_before_gen_tb(env, tb)
 #   define tcg_plugin_after_gen_tb(env, tb)
+#   define tcg_plugin_before_gen_opc(tcg_opcode, tcg_opargs_, nb_args)
 #   define tcg_plugin_after_gen_opc(tcg_opcode, tcg_opargs_, nb_args)
 #   define tcg_plugin_get_filename() "<unknown>"
 #endif /* !CONFIG_TCG_PLUGIN */
@@ -124,6 +126,8 @@ typedef void (* tpi_cpus_stopped_t)(const TCGPluginInterface *tpi);
 typedef void (* tpi_before_gen_tb_t)(const TCGPluginInterface *tpi);
 
 typedef void (* tpi_after_gen_tb_t)(const TCGPluginInterface *tpi);
+
+typedef void (* tpi_before_gen_opc_t)(const TCGPluginInterface *tpi, const TPIOpCode *opcode);
 
 typedef void (* tpi_after_gen_opc_t)(const TCGPluginInterface *tpi, const TPIOpCode *opcode);
 
@@ -233,6 +237,7 @@ struct TCGPluginInterface
     tpi_after_gen_tb_t  after_gen_tb;
     tpi_pre_tb_helper_code_t pre_tb_helper_code;
     tpi_pre_tb_helper_data_t pre_tb_helper_data;
+    tpi_before_gen_opc_t before_gen_opc;
     tpi_after_gen_opc_t after_gen_opc;
     tpi_decode_instr_t decode_instr;
 
