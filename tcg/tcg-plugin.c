@@ -677,7 +677,7 @@ static void tcg_plugin_state_init(void)
 
     tmp = getenv("TPI_MULTI_LOAD");
 
-    if (tmp && stroneof(tmp, "NO", "no", "N", "n", "off", "false", NULL)) {
+    if (tmp && stroneof(tmp, "0", "NO", "no", "N", "n", "OFF", "off", "false", NULL)) {
         g_plugins_state.multi_load = false;
     } else {
         /// default to multi-load being enabled.
