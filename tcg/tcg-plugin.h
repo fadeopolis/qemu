@@ -87,7 +87,7 @@ typedef struct
 } __attribute__((__packed__, __may_alias__)) TPIHelperInfo;
 
 #define TPI_MAX_OP_ARGS 6
-typedef struct
+typedef struct TPIOpCode
 {
     uint64_t pc;
     uint8_t nb_args;
@@ -294,76 +294,70 @@ struct TCGPluginInterface
    Implementation note: the structure defined in _TPI_TCGHelperInfo_struct
    must match TCGHelperInfo in tcg.c.
  */
-#define _TPI_TCGHelperInfo_struct { \
-    void *func;                     \
-    const char *name;               \
-    unsigned flags;                 \
-    unsigned sizemask;              \
-    }
 
 #define TPI_DECL_FUNC_0(tpi, NAME, ret) \
     TPI_DECL_FUNC_FLAGS_0(tpi, NAME, 0, ret)
-#define TPI_DECL_FUNC_FLAGS_0(tpi, NAME, FLAGS, ret) do {               \
-        static const struct _TPI_TCGHelperInfo_struct _info =           \
-            { .func = NAME, .name = #NAME, .flags = FLAGS,              \
-              .sizemask = dh_sizemask(ret, 0) };                        \
+#define TPI_DECL_FUNC_FLAGS_0(tpi, NAME, FLAGS, ret) do {                \
+        static const TCGHelperInfo _info =                               \
+            { .func = NAME, .name = #NAME, .flags = FLAGS,               \
+              .sizemask = dh_sizemask(ret, 0) };                         \
         g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func, \
-                            (gpointer)&_info);                          \
+                            (gpointer)&_info);                           \
     } while(0)
 
 #define TPI_DECL_FUNC_1(tpi, NAME, ret, t1)             \
     TPI_DECL_FUNC_FLAGS_1(tpi, NAME, 0, ret, t1)
-#define TPI_DECL_FUNC_FLAGS_1(tpi, NAME, FLAGS, ret, t1) do {           \
-        static const struct _TPI_TCGHelperInfo_struct _info =           \
-            { .func = NAME, .name = #NAME, .flags = FLAGS,              \
-              .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1) };   \
+#define TPI_DECL_FUNC_FLAGS_1(tpi, NAME, FLAGS, ret, t1) do {            \
+        static const TCGHelperInfo _info =                               \
+            { .func = NAME, .name = #NAME, .flags = FLAGS,               \
+              .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1) };    \
         g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func, \
-                            (gpointer)&_info);                          \
+                            (gpointer)&_info);                           \
     } while(0)
 
 #define TPI_DECL_FUNC_2(tpi, NAME, ret, t1, t2)         \
     TPI_DECL_FUNC_FLAGS_2(tpi, NAME, 0, ret, t1, t2)
-#define TPI_DECL_FUNC_FLAGS_2(tpi, NAME, FLAGS, ret, t1, t2) do {       \
-        static const struct _TPI_TCGHelperInfo_struct _info =           \
-            { .func = NAME, .name = #NAME, .flags = FLAGS,              \
-              .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)      \
-              | dh_sizemask(t2, 2) };                                   \
+#define TPI_DECL_FUNC_FLAGS_2(tpi, NAME, FLAGS, ret, t1, t2) do {        \
+        static const TCGHelperInfo _info =                               \
+            { .func = NAME, .name = #NAME, .flags = FLAGS,               \
+              .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)       \
+              | dh_sizemask(t2, 2) };                                    \
         g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func, \
-                            (gpointer)&_info);                          \
+                            (gpointer)&_info);                           \
     } while(0)
 
 #define TPI_DECL_FUNC_3(tpi, NAME, ret, t1, t2, t3) \
     TPI_DECL_FUNC_FLAGS_3(tpi, NAME, 0, ret, t1, t2, t3)
-#define TPI_DECL_FUNC_FLAGS_3(tpi, NAME, FLAGS, ret, t1, t2, t3) do {   \
-        static const struct _TPI_TCGHelperInfo_struct _info =           \
-            { .func = NAME, .name = #NAME, .flags = FLAGS,              \
-              .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)      \
-              | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) };              \
+#define TPI_DECL_FUNC_FLAGS_3(tpi, NAME, FLAGS, ret, t1, t2, t3) do {    \
+        static const TCGHelperInfo _info =                               \
+            { .func = NAME, .name = #NAME, .flags = FLAGS,               \
+              .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)       \
+              | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) };               \
         g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func, \
-                            (gpointer)&_info);                          \
+                            (gpointer)&_info);                           \
     } while(0)
 
 #define TPI_DECL_FUNC_4(tpi, NAME, ret, t1, t2, t3, t4)                 \
     TPI_DECL_FUNC_FLAGS_4(tpi, NAME, 0, ret, t1, t2, t3, t4)
-#define TPI_DECL_FUNC_FLAGS_4(tpi, NAME, FLAGS, ret, t1, t2, t3, t4) do { \
-        static const struct _TPI_TCGHelperInfo_struct _info =           \
-            { .func = NAME, .name = #NAME, .flags = FLAGS,              \
-              .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)      \
+#define TPI_DECL_FUNC_FLAGS_4(tpi, NAME, FLAGS, ret, t1, t2, t3, t4) do {       \
+        static const TCGHelperInfo _info =                                      \
+            { .func = NAME, .name = #NAME, .flags = FLAGS,                      \
+              .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)              \
               | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) | dh_sizemask(t4, 4) }; \
-        g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func, \
-                            (gpointer)&_info);                          \
+        g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func,        \
+                            (gpointer)&_info);                                  \
     } while(0)
 
 #define TPI_DECL_FUNC_5(tpi, NAME, ret, t1, t2, t3, t4, t5)             \
     TPI_DECL_FUNC_FLAGS_5(tpi, NAME, 0, ret, t1, t2, t3, t4, t5)
 #define TPI_DECL_FUNC_FLAGS_5(tpi, NAME, FLAGS, ret, t1, t2, t3, t4, t5) do { \
-        static const struct _TPI_TCGHelperInfo_struct _info =           \
-            { .func = NAME, .name = #NAME, .flags = FLAGS,              \
-              .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)      \
-              | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) | dh_sizemask(t4, 4) \
-              | dh_sizemask(t5, 5) };                                   \
-        g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func, \
-                            (gpointer)&_info);                          \
+        static const TCGHelperInfo _info =                                    \
+            { .func = NAME, .name = #NAME, .flags = FLAGS,                    \
+              .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)            \
+              | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) | dh_sizemask(t4, 4)  \
+              | dh_sizemask(t5, 5) };                                         \
+        g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func,      \
+                            (gpointer)&_info);                                \
     } while(0)
 
 
