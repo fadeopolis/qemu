@@ -806,9 +806,9 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
      */
 //#define NEED_GDB_BACKTRACE_PLUGIN
 #ifdef NEED_GDB_BACKTRACE_PLUGIN
-    handle = dlopen(path, RTLD_NOW);
+    handle = dlopen(path, RTLD_NOW|RTLD_GLOBAL);
 #else
-    handle = dlopen(plugin_instance_path, RTLD_NOW);
+    handle = dlopen(plugin_instance_path, RTLD_NOW|RTLD_GLOBAL);
 #endif
     if (!handle) {
         fprintf(stderr, "plugin: error: can't load plugin at %s  %s\n", plugin_instance_path,
