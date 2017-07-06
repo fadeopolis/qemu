@@ -955,6 +955,7 @@ void tcg_optimize(TCGContext *s);
 /* only used for debugging purposes */
 void tcg_dump_ops(TCGContext *s);
 void tcg_dump_op(TCGContext *s, const TCGOp *const op, FILE *dst);
+void tcg_dump_op_2(TCGContext *s, TCGOpcode opcode, const TCGArg *args, int nb_args, FILE *dst);
 
 TCGv_i32 tcg_const_i32(int32_t val);
 TCGv_i64 tcg_const_i64(int64_t val);
