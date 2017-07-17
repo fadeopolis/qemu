@@ -549,15 +549,20 @@ void tcg_plugin_load(const char *name)
     ++unique_id;
 }
 
-/* Check if wanted is in list of expected strings passed as NULL terminated varargs */
-static bool stroneof(const char *wanted, ...) {
+/***
+ * Check if wanted is in list of expected strings passed as NULL
+ * terminated varargs list.
+ * Ignores case.
+ */
+
+static bool stroneof_nocase(const char *wanted, ...) {
     const char *expected;
     bool found = false;
 
     va_list ap;
     va_start(ap, wanted);
     while ((expected = va_arg(ap, const char *))) {
-        if (strcmp(wanted, expected) == 0) {
+        if (g_ascii_strcasecmp(wanted, expected) == 0) {
             found = true;
         }
     }
@@ -677,11 +682,23 @@ static void tcg_plugin_state_init(void)
 
     tmp = getenv("TPI_MULTI_LOAD");
 
-    if (tmp && stroneof(tmp, "0", "NO", "no", "N", "n", "OFF", "off", "false", NULL)) {
-        g_plugins_state.multi_load = false;
+    const bool default_multi_load = false;
+
+    if (tmp) {
+        if (stroneof_nocase(tmp, "0", "NO", "N", "OFF" "false", NULL)) {
+            g_plugins_state.multi_load = false;
+        } else if (stroneof_nocase(tmp, "1", "YES", "Y", "ON", "true", NULL)) {
+            g_plugins_state.multi_load = false;
+        } else {
+            fprintf(
+                stderr,
+                "plugin: error: invalid value '%s' for "
+                "TPI_MULTI_LOAD, use '0' or '1'.\n", g_strescape(tmp, ""));
+
+            exit(EXIT_FAILURE);
+        }
     } else {
-        /// default to multi-load being enabled.
-        g_plugins_state.multi_load = true;
+        g_plugins_state.multi_load = default_multi_load;
     }
 }
 
