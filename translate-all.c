@@ -187,6 +187,55 @@ void tb_lock_reset(void)
 
 static TranslationBlock *tb_find_pc(uintptr_t tc_ptr);
 
+/* log file for linux perf symbol map */
+static FILE *tb_perfmap = NULL;
+
+void tb_enable_perfmap(void)
+{
+    if (tb_perfmap) { return; }
+
+    gchar *map_file = g_strdup_printf("/tmp/perf-%d.map", getpid());
+    tb_perfmap = fopen(map_file, "w");
+    if (!tb_perfmap) {
+        fprintf(stderr, "error: could not open linux perf symbol map file: "
+                        "'%s'\n", map_file);
+        exit(1);
+    }
+    g_free(map_file);
+}
+
+static void tb_write_perfmap_prologue(void)
+{
+    if (tb_perfmap) {
+        fprintf(
+            tb_perfmap,
+            "%"PRIxPTR" %x tcg-prologue-buffer\n",
+            (uintptr_t) tcg_ctx.code_gen_prologue, 1024);
+        fflush(tb_perfmap);
+    }
+}
+
+static void tb_write_perfmap(tcg_insn_unit *start, int size,
+                             target_ulong pc)
+{
+    assert_tb_locked();
+
+    if (tb_perfmap) {
+        const char *symbol, *file;
+
+        if (!lookup_symbol2(pc, &symbol, &file)) {
+            file = symbol = "<unknown>";
+        }
+
+        fprintf(
+            tb_perfmap,
+            "%" PRIxPTR " %x qemu-" TARGET_FMT_lx "-%s\n",
+                (uintptr_t) start, size, pc, symbol);
+        fflush(tb_perfmap);
+    }
+}
+
+
 void cpu_gen_init(void)
 {
     tcg_context_init(&tcg_ctx); 
@@ -783,6 +832,8 @@ static inline void code_gen_alloc(size_t tb_size)
         exit(1);
     }
 
+    tb_write_perfmap_prologue();
+
     /* Estimate a good size for the number of TBs we can support.  We
        still haven't deducted the prologue from the buffer size here,
        but that's minimal and won't affect the estimate much.  */
@@ -1341,6 +1392,8 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     tcg_ctx.code_out_len += gen_code_size;
     tcg_ctx.search_out_len += search_size;
 #endif
+
+    tb_write_perfmap(gen_code_buf, gen_code_size, tb->pc);
 
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_OUT_ASM) &&

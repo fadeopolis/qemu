@@ -79,6 +79,8 @@ int qemu_openpty_raw(int *aslave, char *pty_name);
 void tcg_exec_init(unsigned long tb_size);
 bool tcg_enabled(void);
 
+extern void tb_enable_perfmap(void);
+
 void cpu_exec_init_all(void);
 void cpu_exec_step_atomic(CPUState *cpu);
 

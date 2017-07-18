@@ -4023,6 +4023,11 @@ static void handle_arg_singlestep(const char *arg)
     singlestep = 1;
 }
 
+static void handle_arg_perfmap(const char *arg)
+{
+    tb_enable_perfmap();
+}
+
 static void handle_arg_strace(const char *arg)
 {
     do_strace = 1;
@@ -4099,6 +4104,8 @@ static const struct qemu_argument arg_table[] = {
      "",           "Seed for pseudo-random number generator"},
     {"trace",      "QEMU_TRACE",       true,  handle_arg_trace,
      "",           "[[enable=]<pattern>][,events=<file>][,file=<file>]"},
+    {"perfmap",    "QEMU_PERFMAP",     false,  handle_arg_perfmap,
+     "",           "emit /tmp/perf-$PID.map file for linux perf"},
     {"version",    "QEMU_VERSION",     false, handle_arg_version,
      "",           "display version information and exit"},
     {NULL, NULL, false, NULL, NULL, NULL}
