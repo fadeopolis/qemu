@@ -1107,7 +1107,48 @@ static void tcg_plugin_tpi_after_gen_tb(TCGPluginInterface *tpi,
     }
 
     tpi->_in_gen_tpi_helper = false;
+}
 
+static void tcg_plugin_tpi_before_decode_first_instr(TCGPluginInterface *tpi,
+                                                     CPUState *env, TranslationBlock *tb)
+{
+    assert(tb);
+
+    if (tb->pc < tpi->low_pc || tb->pc >= tpi->high_pc) {
+        return;
+    }
+
+    assert(!tpi->_in_gen_tpi_helper);
+    tpi->_in_gen_tpi_helper = true;
+    tpi->tb = tb;
+
+    if (tpi->before_decode_first_instr) {
+        tpi->before_decode_first_instr(tpi, tb);
+    }
+
+    tpi->tb = NULL;
+    tpi->_in_gen_tpi_helper = false;
+}
+
+static void tcg_plugin_tpi_after_decode_last_instr(TCGPluginInterface *tpi,
+                                                   CPUState *env, TranslationBlock *tb)
+{
+    assert(tb);
+
+    if (tb->pc < tpi->low_pc || tb->pc >= tpi->high_pc) {
+        return;
+    }
+
+    assert(!tpi->_in_gen_tpi_helper);
+    tpi->_in_gen_tpi_helper = true;
+    tpi->tb = tb;
+
+    if (tpi->after_decode_last_instr) {
+        tpi->after_decode_last_instr(tpi, tb);
+    }
+
+    tpi->tb = NULL;
+    tpi->_in_gen_tpi_helper = false;
 }
 
 static void tcg_plugin_tpi_before_gen_opc(TCGPluginInterface *tpi,
@@ -1306,6 +1347,43 @@ void tcg_plugin_after_gen_tb(CPUState *env, TranslationBlock *tb)
         }
     }
 }
+
+
+/* Hook called before the instruction decoding. */
+void tcg_plugin_before_decode_first_instr(CPUState *env, TranslationBlock *tb)
+{
+    GList *l;
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
+    {
+        TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
+        if (!tpi->_active)
+            continue;
+        if (tcg_plugin_initialize(tpi)) {
+            tpi->_current_pc = tb->pc;
+            tpi->_current_tb = tb;
+            tcg_plugin_tpi_before_decode_first_instr(tpi, env, tb);
+        }
+    }
+}
+
+
+/* Hook called after the instruction decoding. */
+void tcg_plugin_after_decode_last_instr(CPUState *env, TranslationBlock *tb)
+{
+    GList *l;
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
+    {
+        TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
+        if (!tpi->_active)
+            continue;
+        if (tcg_plugin_initialize(tpi)) {
+            tpi->_current_pc = tb->pc;
+            tpi->_current_tb = tb;
+            tcg_plugin_tpi_after_decode_last_instr(tpi, env, tb);
+        }
+    }
+}
+
 
 /* Hook called each time a TCG opcode is generated.  */
 void tcg_plugin_before_gen_opc(TCGOpcode opcode, TCGArg *opargs, uint8_t nb_args)

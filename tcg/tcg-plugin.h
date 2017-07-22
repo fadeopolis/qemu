@@ -1,3 +1,4 @@
+
 /*
  * QEMU TCG plugin support.
  *
@@ -53,6 +54,8 @@
     void tcg_plugin_cpus_stopped(void);
     void tcg_plugin_before_gen_tb(CPUState *env, TranslationBlock *tb);
     void tcg_plugin_after_gen_tb(CPUState *env, TranslationBlock *tb);
+    void tcg_plugin_before_decode_first_instr(CPUState *env, TranslationBlock *tb);
+    void tcg_plugin_after_decode_last_instr(CPUState *env, TranslationBlock *tb);
     void tcg_plugin_before_gen_opc(TCGOpcode opcode, TCGArg *opargs, uint8_t nb_args);
     void tcg_plugin_after_gen_opc(TCGOp *opcode, TCGArg *opargs, uint8_t nb_args);
     const char *tcg_plugin_get_filename(void);
@@ -63,6 +66,8 @@
 #   define tcg_plugin_cpus_stopped()
 #   define tcg_plugin_before_gen_tb(env, tb)
 #   define tcg_plugin_after_gen_tb(env, tb)
+#   define tcg_plugin_before_decode_first_instr(env, tb)
+#   define tcg_plugin_after_decode_last_instr(env, tb)
 #   define tcg_plugin_before_gen_opc(tcg_opcode, tcg_opargs_, nb_args)
 #   define tcg_plugin_after_gen_opc(tcg_opcode, tcg_opargs_, nb_args)
 #   define tcg_plugin_get_filename() "<unknown>"
@@ -126,6 +131,12 @@ typedef void (* tpi_cpus_stopped_t)(const TCGPluginInterface *tpi);
 typedef void (* tpi_before_gen_tb_t)(const TCGPluginInterface *tpi);
 
 typedef void (* tpi_after_gen_tb_t)(const TCGPluginInterface *tpi);
+
+typedef void (* tpi_before_decode_first_instr_t)(const TCGPluginInterface *tpi,
+                                                 const TranslationBlock* tb);
+
+typedef void (* tpi_after_decode_last_instr_t)(const TCGPluginInterface *tpi,
+                                               const TranslationBlock* tb);
 
 typedef void (* tpi_before_gen_opc_t)(const TCGPluginInterface *tpi, const TPIOpCode *opcode);
 
@@ -240,6 +251,9 @@ struct TCGPluginInterface
     tpi_before_gen_opc_t before_gen_opc;
     tpi_after_gen_opc_t after_gen_opc;
     tpi_decode_instr_t decode_instr;
+
+    tpi_before_decode_first_instr_t before_decode_first_instr;
+    tpi_after_decode_last_instr_t after_decode_last_instr;
 
     /* Parameters callbacks */
     tpi_check_param_bool_t check_param_bool;
