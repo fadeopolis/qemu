@@ -486,6 +486,35 @@ bool lookup_symbol4(target_ulong orig_addr, const char **symbol, const char **fi
     return false;
 }
 
+bool lookup_symbol5(target_ulong orig_addr, const char **symbol, const char **filename, uint64_t *address, uint64_t *size, uint64_t *load_bias)
+{
+  struct syminfo *s;
+
+  for (s = syminfos; s; s = s->next) {
+#if defined(CONFIG_USER_ONLY)
+    target_ulong target_address, target_size;
+#else
+    hwaddr target_address, target_size;
+#endif
+    *symbol = s->lookup_symbol(s, orig_addr, &target_address, &target_size);
+    if (*symbol[0] != '\0') {
+      *filename = s->filename;
+      *address = target_address;
+      *size = target_size;
+      *load_bias = s->load_bias;
+      return true;
+    }
+  }
+
+  *symbol = "";
+  *filename = "";
+  *address = orig_addr;
+  *size = 0;
+  *load_bias = 0;
+  return false;
+}
+
+
 #if !defined(CONFIG_USER_ONLY)
 
 #include "monitor/monitor.h"

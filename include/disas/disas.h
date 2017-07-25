@@ -19,6 +19,7 @@ const char *lookup_symbol(target_ulong orig_addr);
 bool lookup_symbol2(target_ulong orig_addr, const char **symbol, const char **filename);
 bool lookup_symbol3(target_ulong orig_addr, const char **symbol, const char **filename, uint64_t *address);
 bool lookup_symbol4(target_ulong orig_addr, const char **symbol, const char **filename, uint64_t *address, uint64_t *size);
+bool lookup_symbol5(target_ulong orig_addr, const char **symbol, const char **filename, uint64_t *address, uint64_t *size, uint64_t *load_bias);
 
 /* Look up symbol bounds by name for debugging purpose.  Returns false if unknown. */
 bool find_symbol_bounds(const char *name, bool is_elf_class64, uint64_t *start, uint64_t *size);
@@ -43,6 +44,7 @@ struct syminfo {
     } disas_symtab;
     const char *disas_strtab;
     const char *filename;
+    size_t load_bias;
     struct syminfo *next;
 };
 

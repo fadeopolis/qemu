@@ -2368,6 +2368,7 @@ static void load_symbols(struct elfhdr *hdr, int fd, const char *filename, abi_u
     s->lookup_symbol = lookup_symbolxx;
     s->filename = g_strdup(filename);
     s->next = syminfos;
+    s->load_bias = load_bias;
     syminfos = s;
 
     return;
