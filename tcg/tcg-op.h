@@ -26,6 +26,7 @@
 #define TCG_OP_H
 
 #include "tcg.h"
+#include "tcg-plugin.h"
 #include "exec/helper-proto.h"
 #include "exec/helper-gen.h"
 
