@@ -212,6 +212,21 @@ tcg-plugin-dyntrace.so: LIBS += $(CAPSTONE_LDFLAGS)
 tcg-plugin-coverage.o: CFLAGS += $(CAPSTONE_CFLAGS)
 tcg-plugin-coverage.so: LIBS += $(CAPSTONE_LDFLAGS)
 
+# cxx plugin
+
+tcg-plugin-cpp.so: LIBS += $(CAPSTONE_LDFLAGS)
+
+CXX_PLUGIN_FLAGS := -Wall -Werror -Wextra -pedantic -std=c++14 \
+					$(CAPSTONE_CFLAGS) -fno-PIE -fPIC
+
+CPP_PLUGIN_OBJS := $(patsubst $(SRC_PATH)/tcg/plugins/cpp/%.cpp,cpp-%.o,$(wildcard $(SRC_PATH)/tcg/plugins/cpp/*.cpp))
+CPP_DEPS := $(patsubst %.o,%.d,$(CPP_PLUGIN_OBJS))
+cpp-%.o: $(SRC_PATH)/tcg/plugins/cpp/%.cpp
+	$(CXX) -c $(CXX_PLUGIN_FLAGS) -MD $< -o $@
+-include $(CPP_DEPS)
+
+tcg-plugin-cpp.so: tcg-plugin-cpp.o $(CPP_PLUGIN_OBJS)
+
 endif # CONFIG_TCG_PLUGIN
 
 # Workaround for http://gcc.gnu.org/PR55489, see configure.
