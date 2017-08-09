@@ -1869,7 +1869,7 @@ customize_caches()
 	/* exec customname using cust_argc, cust_argv */
 	cust_argv[0] = customname;
 	cust_argv[cust_argc++] = NULL;
-	x = execv (customname, (char* const*)cust_argv); /* cast avoids warnings */
+	x = execv (customname, (const char* const*)cust_argv); /* cast avoids warnings */
 	die ("cannot exec custom version %s: %s\n", customname, strerror(x));
 }
 #endif	/* !D4CUSTOM */
