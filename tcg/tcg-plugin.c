@@ -53,6 +53,9 @@
 /* Definition of private externals used in tcg-plugin.inc.c. */
 __thread uint32_t _tpi_thread_tid;
 
+/* number of gen_tpi_helper callback currently live on the stack */
+static __thread unsigned _gen_tpi_helper_depth = 0;
+
 /* Singleton plugins global state. */
 static struct {
 
@@ -154,6 +157,13 @@ TCGPluginInterface *tpi_find_plugin(const char *name, uint32_t id)
 
     return NULL;
 }
+
+
+bool tpi_in_other_gen_tpi_helper(void)
+{
+    return _gen_tpi_helper_depth > 1;
+}
+
 
 static char *param_value_to_string(const TCGPluginInterface *tpi,
                                    const char *name,
@@ -1338,6 +1348,9 @@ void tcg_plugin_before_gen_tb(CPUState *env, TranslationBlock *tb)
             tpi->_current_tb = tb;
         }
     }
+
+    _gen_tpi_helper_depth++;
+
     for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
     {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
@@ -1347,6 +1360,9 @@ void tcg_plugin_before_gen_tb(CPUState *env, TranslationBlock *tb)
             tcg_plugin_tpi_before_gen_tb(tpi, env, tb);
         }
     }
+
+    assert(_gen_tpi_helper_depth > 0);
+    _gen_tpi_helper_depth--;
 }
 
 /* Hook called after the Intermediate Code Generation (ICG).  */
@@ -1362,6 +1378,9 @@ void tcg_plugin_after_gen_tb(CPUState *env, TranslationBlock *tb)
             tcg_plugin_tpi_after_gen_tb(tpi, env, tb);
         }
     }
+
+    _gen_tpi_helper_depth++;
+
     for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
     {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
@@ -1372,6 +1391,9 @@ void tcg_plugin_after_gen_tb(CPUState *env, TranslationBlock *tb)
             tpi->_current_tb = NULL;
         }
     }
+
+    assert(_gen_tpi_helper_depth > 0);
+    _gen_tpi_helper_depth--;
 }
 
 /* Hook called before the instruction decoding. */
@@ -1379,6 +1401,8 @@ void tcg_plugin_after_gen_tb(CPUState *env, TranslationBlock *tb)
 bool tcg_plugin_before_decode_instr(TranslationBlock *tb, uint64_t pc)
 {
     bool out = false;
+
+    _gen_tpi_helper_depth++;
 
     GList *l;
     for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
@@ -1393,6 +1417,9 @@ bool tcg_plugin_before_decode_instr(TranslationBlock *tb, uint64_t pc)
         }
     }
 
+    assert(_gen_tpi_helper_depth > 0);
+    _gen_tpi_helper_depth--;
+
     return out;
 }
 
@@ -1400,6 +1427,9 @@ bool tcg_plugin_before_decode_instr(TranslationBlock *tb, uint64_t pc)
 void tcg_plugin_before_decode_first_instr(CPUState *env, TranslationBlock *tb)
 {
     GList *l;
+
+    _gen_tpi_helper_depth++;
+
     for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
     {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
@@ -1411,6 +1441,9 @@ void tcg_plugin_before_decode_first_instr(CPUState *env, TranslationBlock *tb)
             tcg_plugin_tpi_before_decode_first_instr(tpi, env, tb);
         }
     }
+
+    assert(_gen_tpi_helper_depth > 0);
+    _gen_tpi_helper_depth--;
 }
 
 
@@ -1418,6 +1451,9 @@ void tcg_plugin_before_decode_first_instr(CPUState *env, TranslationBlock *tb)
 void tcg_plugin_after_decode_last_instr(CPUState *env, TranslationBlock *tb)
 {
     GList *l;
+
+    _gen_tpi_helper_depth++;
+
     for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
     {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
@@ -1429,6 +1465,9 @@ void tcg_plugin_after_decode_last_instr(CPUState *env, TranslationBlock *tb)
             tcg_plugin_tpi_after_decode_last_instr(tpi, env, tb);
         }
     }
+
+    assert(_gen_tpi_helper_depth > 0);
+    _gen_tpi_helper_depth--;
 }
 
 
@@ -1436,6 +1475,9 @@ void tcg_plugin_after_decode_last_instr(CPUState *env, TranslationBlock *tb)
 void tcg_plugin_before_gen_opc(TCGOpcode opcode, TCGArg *opargs, uint8_t nb_args)
 {
     GList *l;
+
+    _gen_tpi_helper_depth++;
+
     for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
     {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
@@ -1444,12 +1486,18 @@ void tcg_plugin_before_gen_opc(TCGOpcode opcode, TCGArg *opargs, uint8_t nb_args
         if (tcg_plugin_initialize(tpi))
             tcg_plugin_tpi_before_gen_opc(tpi, opcode, opargs, nb_args);
     }
+
+    assert(_gen_tpi_helper_depth > 0);
+    _gen_tpi_helper_depth--;
 }
 
 /* Hook called each time a TCG opcode is generated.  */
 void tcg_plugin_after_gen_opc(TCGOp *opcode, TCGArg *opargs, uint8_t nb_args)
 {
     GList *l;
+
+    _gen_tpi_helper_depth++;
+
     for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
     {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
@@ -1458,6 +1506,9 @@ void tcg_plugin_after_gen_opc(TCGOp *opcode, TCGArg *opargs, uint8_t nb_args)
         if (tcg_plugin_initialize(tpi))
             tcg_plugin_tpi_after_gen_opc(tpi, opcode, opargs, nb_args);
     }
+
+    assert(_gen_tpi_helper_depth > 0);
+    _gen_tpi_helper_depth--;
 }
 
 void tpi_exec_lock(const TCGPluginInterface *tpi)
