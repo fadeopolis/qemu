@@ -2,10 +2,63 @@
 
 #include <capstone/capstone.h>
 #include <cstdlib>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
+
+class source_file;
+
+class source_line
+{
+public:
+    source_line(unsigned int number, const std::string& line, source_file& file)
+        : number_(number), line_(line), file_(file)
+    {
+    }
+
+    unsigned int number() const { return number_; }
+    const std::string& line() const { return line_; }
+    source_file& file() const { return file_; }
+
+private:
+    unsigned int number_;
+    const std::string line_;
+    source_file& file_;
+};
+
+class source_file
+{
+public:
+    source_file(const std::string& path) : path_(path)
+    {
+        source_file& file = *this;
+        // empty first line
+        lines_.emplace_back(0, "", file);
+
+        std::ifstream in(path);
+        std::string line;
+        unsigned int line_number = 1;
+        while (std::getline(in, line)) {
+            lines_.emplace_back(line_number, line, file);
+            ++line_number;
+        }
+    }
+    const std::string& path() const { return path_; }
+
+    // return empty if number is more than number of lines in file
+    const source_line& get_line(unsigned int number) const
+    {
+        if (number >= lines_.size())
+            return lines_[0];
+        return lines_[number];
+    }
+
+private:
+    const std::string path_;
+    std::vector<source_line> lines_;
+};
 
 class binary_file;
 
@@ -52,7 +105,10 @@ private:
 class instruction
 {
 public:
-    instruction(const cs_insn& capstone_inst) : capstone_inst_(capstone_inst) {}
+    instruction(const cs_insn& capstone_inst, const source_line* line)
+        : capstone_inst_(capstone_inst), line_(line)
+    {
+    }
 
     uint64_t pc() const { return capstone_inst_.address; }
     const std::string str() const
@@ -62,10 +118,12 @@ public:
     }
     size_t size() const { return capstone_inst_.size; }
     const cs_insn& capstone_inst() const { return capstone_inst_; }
+    const source_line* line() const { return line_; }
     static csh get_capstone_handle();
 
 private:
     const cs_insn& capstone_inst_;
+    const source_line* line_;
 };
 
 // a sequence of instruction without any branching
@@ -115,6 +173,8 @@ public:
     virtual void on_program_end() {}
     const std::string& name() const { return name_; }
     const std::string& description() const { return description_; }
+
+    static const source_line* get_source_line(uint64_t pc);
 private:
     const std::string name_;
     const std::string description_;

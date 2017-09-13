@@ -1,5 +1,6 @@
 #include "plugin_api.h"
 
+#include <algorithm>
 #include <inttypes.h>
 #include <iostream>
 #include <map>
@@ -62,15 +63,53 @@ public:
         std::cerr << "symbol '" << s.name() << "' from file '"
                   << s.file().path() << "'\n";
         // disassemble whole symbol
+        const source_line* prev_line = nullptr;
+        std::unordered_map<const source_line*, uint64_t /* count */>
+            source_hits;
+
+        const char* green = "\033[1;32m";
+        const char* black = "\033[1;30m";
+        const char* white = "\033[1;37m";
+
         while (cs_disasm_iter(handle, &code, &size, &pc, inst)) {
             uint64_t count = hits[inst->address];
+            const source_line* line = get_source_line(inst->address);
+            std::string source;
+            if (line != prev_line) {
+                source = line->file().path() + ":" +
+                         std::to_string(line->number()) + " " + line->line();
+                source_hits[line] = count;
+            }
+            prev_line = line;
 
+            if (!source.empty()) {
+                fprintf(stderr, "%s\n", source.c_str());
+            }
             fprintf(stderr, "%s%8" PRIu64 "%s | 0x%" PRIx64 ":\t %s%s\t %s%s\n",
-                    count ? "\033[1;32m" : "\033[1;30m", count, "\033[1;30m",
-                    inst->address, count ? "\033[1;32m" : "\033[1;30m",
-                    inst->mnemonic, inst->op_str, "\033[0;37m");
+                    count ? green : black, count, black, inst->address,
+                    count ? green : black, inst->mnemonic, inst->op_str, white);
         }
         std::cerr << "--------------------------------------------\n";
+        if (!source_hits.empty()) {
+            std::vector<std::pair<const source_line*, uint64_t>> lines;
+            std::copy(source_hits.begin(), source_hits.end(),
+                      std::back_inserter(lines));
+            std::sort(lines.begin(), lines.end(),
+                      [](const auto& p1, const auto& p2) {
+                          const source_line& l1 = *p1.first;
+                          const source_line& l2 = *p2.first;
+                          if (l1.file().path() < l2.file().path())
+                              return true;
+                          return l1.number() < l2.number();
+                      });
+            for (const auto& p : lines) {
+                const source_line& l = *p.first;
+                uint64_t count = p.second;
+                fprintf(stderr, "%s%s:%u\t%s%12" PRIu64 "| %s%s\n", black,
+                        l.file().path().c_str(), l.number(),
+                        count ? green : black, count, l.line().c_str(), white);
+            }
+        }
         cs_free(inst, 1);
     }
 

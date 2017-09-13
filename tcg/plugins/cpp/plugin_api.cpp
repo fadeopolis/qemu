@@ -2,11 +2,18 @@
 
 #include "plugin_api.h"
 
+#include <libdwarf/dwarf.h>
+#include <libdwarf/libdwarf.h>
+
 #include <algorithm>
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
+#include <fcntl.h>
 #include <map>
 #include <set>
 #include <sstream>
+#include <unistd.h>
 #include <unordered_map>
 #include <vector>
 
@@ -33,7 +40,7 @@ private:
             exit(EXIT_FAILURE);
         }
         cs_option(handle_, CS_OPT_DETAIL, CS_OPT_ON);
-        cs_option(handle_, CS_OPT_SYNTAX, CS_OPT_SYNTAX_INTEL);
+        cs_option(handle_, CS_OPT_SYNTAX, CS_OPT_SYNTAX_ATT);
     }
 
     ~capstone() { cs_close(&handle_); }
@@ -97,6 +104,11 @@ public:
         return b;
     }
 
+    const source_line* get_source_line(uint64_t pc)
+    {
+        return pc_to_lines_[pc];
+    }
+
     // register plugin @p as available
     void register_plugin(plugin& p)
     {
@@ -146,12 +158,25 @@ private:
     // get or create a binary file
     binary_file& get_binary_file(const std::string& path)
     {
-        auto it = files_.find(path);
-        if (it != files_.end()) {
+        auto it = binary_files_.find(path);
+        if (it != binary_files_.end()) {
             return it->second;
         }
 
-        return files_.emplace(path, path).first->second;
+        std::string error;
+        read_dwarf(path, error);
+
+        return binary_files_.emplace(path, path).first->second;
+    }
+
+    // get or create a source file
+    source_file& get_source_file(const std::string& path)
+    {
+        auto it = source_files_.find(path);
+        if (it != source_files_.end())
+            return it->second;
+        source_file& file = source_files_.emplace(path, path).first->second;
+        return file;
     }
 
     // get or create a symbol (adds it to its file)
@@ -181,7 +206,10 @@ private:
         }
 
         instruction& inst =
-            instructions_.emplace(pc, capstone_inst).first->second;
+            instructions_
+                .emplace(std::piecewise_construct, std::forward_as_tuple(pc),
+                         std::forward_as_tuple(capstone_inst, pc_to_lines_[pc]))
+                .first->second;
         return inst;
     }
 
@@ -211,6 +239,103 @@ private:
             b.add_instruction(inst);
             insn = &get_capstone_instruction(pc);
         }
+    }
+
+    /* read and record cu source files info */
+    void read_debug_cu(Dwarf_Die cu)
+    {
+        Dwarf_Line* lines;
+        Dwarf_Signed count;
+        Dwarf_Error de;
+
+        if (dwarf_srclines(cu, &lines, &count, &de) != DW_DLV_OK) {
+            return;
+        }
+
+        Dwarf_Addr low_pc = 0;
+        Dwarf_Addr high_pc = 0;
+        dwarf_lowpc(cu, &low_pc, &de);
+        if (dwarf_highpc(cu, &high_pc, &de) != DW_DLV_OK) {
+            /* high_pc is an offset instead of absolute address */
+            high_pc = low_pc + high_pc;
+        }
+
+        Dwarf_Addr prev_address = 0;
+        const source_line* prev_source_line = nullptr;
+
+        auto register_address = [&](Dwarf_Addr current, Dwarf_Addr prev,
+                                    const source_line* prev_line) {
+            if (!prev || !prev_line)
+                return;
+            for (auto a = prev_address; a < current; ++a) {
+                pc_to_lines_[a] = prev_line;
+            }
+        };
+
+        for (Dwarf_Signed i = 0; i < count; ++i) {
+            Dwarf_Addr address = 0;
+            Dwarf_Unsigned lineno = 0;
+            char* file = nullptr;
+            Dwarf_Line line = lines[i];
+
+            if (dwarf_lineaddr(line, &address, &de) != DW_DLV_OK ||
+                dwarf_lineno(line, &lineno, &de) != DW_DLV_OK ||
+                dwarf_linesrc(line, &file, &de) != DW_DLV_OK) {
+                continue;
+            }
+
+            register_address(address, prev_address, prev_source_line);
+
+            source_file& source = get_source_file(file);
+            prev_address = address;
+            prev_source_line = &source.get_line(lineno);
+        }
+
+        // register address for last instruction
+        register_address(high_pc, prev_address, prev_source_line);
+    }
+
+    /* read dwarf file @file */
+    bool read_dwarf(const std::string& file, std::string& error)
+    {
+        int fd = open(file.c_str(), O_RDONLY);
+        if (fd < 0) {
+            error = strerror(errno);
+            return false;
+        }
+
+        Dwarf_Debug dbg;
+        Dwarf_Error de;
+        Dwarf_Unsigned cu_offset = 0;
+
+        auto cleanup = [&]() {
+            close(fd);
+            dwarf_finish(dbg, &de);
+        };
+
+        if (dwarf_init(fd, DW_DLC_READ, nullptr, nullptr, &dbg, &de) !=
+            DW_DLV_OK) {
+            error = std::string("dwarf_init: ") + dwarf_errmsg(de);
+            cleanup();
+            return false;
+        }
+
+        while (dwarf_next_cu_header(dbg, nullptr, nullptr, nullptr, nullptr,
+                                    &cu_offset, &de) == DW_DLV_OK) {
+            Dwarf_Die die = nullptr;
+            Dwarf_Die ret_die = nullptr;
+            Dwarf_Half tag;
+            while (dwarf_siblingof(dbg, die, &ret_die, &de) == DW_DLV_OK) {
+                die = ret_die;
+                if (dwarf_tag(die, &tag, &de) == DW_DLV_OK &&
+                    tag == DW_TAG_compile_unit) {
+                    read_debug_cu(die);
+                }
+            }
+        }
+
+        cleanup();
+        return true;
     }
 
     void list_available_plugins()
@@ -258,11 +383,18 @@ private:
     std::unordered_map<uint64_t /* pc */, instruction> instructions_;
     std::unordered_map<uint64_t /* pc */, translation_block> blocks_;
     std::unordered_map<uint64_t /* pc */, symbol> symbols_;
-    std::unordered_map<std::string /* name */, binary_file> files_;
+    std::unordered_map<std::string /* name */, binary_file> binary_files_;
+    std::unordered_map<std::string /* path */, source_file> source_files_;
+    std::unordered_map<uint64_t /* pc */, const source_line*> pc_to_lines_;
     std::map<std::string /* name */, plugin*> available_plugins_;
     std::vector<plugin*> plugins_; /* active */
     static const std::string env_var_plugins_name_;
 };
+
+const source_line* plugin::get_source_line(uint64_t pc)
+{
+    return plugin_manager::get().get_source_line(pc);
+}
 
 const std::string plugin_manager::env_var_plugins_name_ = "TCG_PLUGIN_CPP";
 

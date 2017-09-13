@@ -41,6 +41,11 @@ static void after_gen_tb(const TCGPluginInterface* tpi)
         symbol_code = (const uint8_t*)tpi_guest_ptr(tpi, symbol_pc);
     }
 
+    // magic offset to correct pc
+    uint64_t pc_offset = 0x4000000000;
+    pc -= pc_offset;
+    if (symbol_pc)
+        symbol_pc -= pc_offset;
     translation_block* block = get_translation_block(
         pc, code, tb->size, symbol, symbol_pc, symbol_size, symbol_code, file);
     /* patch current_block ptr */

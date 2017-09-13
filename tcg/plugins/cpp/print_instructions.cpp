@@ -33,7 +33,13 @@ public:
 
     void on_instruction_exec(translation_block&, instruction& i) override
     {
-        std::cerr << "exec " << i.str() << '\n';
+        std::cerr << "exec 0x" << std::hex << i.pc() << std::dec << " "
+                  << i.str() << '\n';
+        const source_line* line = i.line();
+        if (line) {
+            std::cerr << "// from file " << line->file().path() << ":"
+                      << line->number() << ": " << line->line() << '\n';
+        }
     }
 
     void on_block_exit(translation_block& b) override
