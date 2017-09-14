@@ -2294,6 +2294,15 @@ static void load_symbols(struct elfhdr *hdr, int fd, const char *filename, abi_u
         }
     }
 
+    /* search in dynsym if no symtab is available */
+    for (i = 0; i < shnum; ++i) {
+        if (shdr[i].sh_type == SHT_DYNSYM) {
+            sym_idx = i;
+            str_idx = shdr[i].sh_link;
+            goto found;
+        }
+    }
+
     /* There will be no symbol table if the file was stripped.  */
     return;
 
