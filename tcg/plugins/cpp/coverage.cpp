@@ -62,7 +62,6 @@ public:
 
         std::cerr << "symbol '" << s.name() << "' from file '"
                   << s.file().path() << "'\n";
-        // disassemble whole symbol
         const source_line* prev_line = nullptr;
         std::unordered_map<const source_line*, uint64_t /* count */>
             source_hits;
@@ -71,6 +70,7 @@ public:
         const char* black = "\033[1;30m";
         const char* white = "\033[1;37m";
 
+        // disassemble whole symbol
         while (cs_disasm_iter(handle, &code, &size, &pc, inst)) {
             uint64_t count = hits[inst->address];
             const source_line* line = get_source_line(inst->address);

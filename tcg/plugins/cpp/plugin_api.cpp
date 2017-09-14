@@ -65,6 +65,69 @@ csh instruction::get_capstone_handle()
     return capstone::get().handle();
 }
 
+/* maintain a call_stack from all blocks executed */
+class call_stack_recorder
+{
+public:
+    call_stack_recorder() { call_stack_.reserve(1000); }
+
+    void on_block_enter(translation_block& b) { track_stack(b); }
+
+    plugin::call_stack get_call_stack() const
+    {
+        plugin::call_stack cs;
+        cs.reserve(call_stack_.size() + 1); /* +1 to push current instruction */
+        for (const auto& p : call_stack_) {
+            cs.emplace_back(p.first);
+        }
+        return cs;
+    }
+
+private:
+    void track_stack(translation_block& b)
+    {
+        uint64_t expected_block_pc = next_block_pc_;
+        const instruction* exit_block_instr = last_instr_block;
+        uint64_t current_pc = b.pc();
+
+        next_block_pc_ = current_pc + b.size();
+        last_instr_block = b.instructions().back();
+
+        if (!exit_block_instr) /* first time */
+            return;
+
+        if (expected_block_pc == current_pc) /* linear execution */
+            return;
+
+        /* check if we returned */
+        for (auto it = call_stack_.end(); it != call_stack_.begin(); --it) {
+            uint64_t expected_pc = it->second;
+            if (expected_pc == current_pc) /* this is a function return */
+            {
+                call_stack_.erase(it, call_stack_.end());
+                return;
+            }
+        }
+
+        uint64_t top_of_stack = get_current_top_of_stack();
+        top_of_stack = get_correct_pc(top_of_stack);
+
+        if (top_of_stack != expected_block_pc) {
+            /* this is a simple jump */
+            return;
+        }
+
+        /* this is a call */
+        call_stack_.emplace_back(exit_block_instr, expected_block_pc);
+    }
+
+    uint64_t next_block_pc_ = 0;
+    const instruction* last_instr_block = nullptr;
+    std::vector<std::pair<const instruction* /* caller */,
+                          uint64_t /* expected next pc */>>
+        call_stack_;
+};
+
 // manager for plugins
 class plugin_manager
 {
@@ -104,9 +167,11 @@ public:
         return b;
     }
 
-    const source_line* get_source_line(uint64_t pc)
+    const source_line* get_source_line(uint64_t pc) { return pc_to_lines_[pc]; }
+
+    plugin::call_stack get_call_stack()
     {
-        return pc_to_lines_[pc];
+        return cs_recorder_.get_call_stack();
     }
 
     // register plugin @p as available
@@ -131,6 +196,8 @@ public:
 
     void event_block_executed(translation_block& b)
     {
+        cs_recorder_.on_block_enter(b); // track stack
+
         for (const auto& p : plugins_) {
             p->on_block_enter(b);
         }
@@ -198,7 +265,8 @@ private:
     }
 
     // get or create an instruction
-    instruction& get_instruction(uint64_t pc, cs_insn& capstone_inst)
+    instruction& get_instruction(uint64_t pc, symbol& sym,
+                                 cs_insn& capstone_inst)
     {
         auto it = instructions_.find(pc);
         if (it != instructions_.end()) {
@@ -207,8 +275,9 @@ private:
 
         instruction& inst =
             instructions_
-                .emplace(std::piecewise_construct, std::forward_as_tuple(pc),
-                         std::forward_as_tuple(capstone_inst, pc_to_lines_[pc]))
+                .emplace(
+                    std::piecewise_construct, std::forward_as_tuple(pc),
+                    std::forward_as_tuple(sym, capstone_inst, pc_to_lines_[pc]))
                 .first->second;
         return inst;
     }
@@ -235,7 +304,8 @@ private:
         cs_insn* insn = &get_capstone_instruction(pc);
         csh handle = capstone::get().handle();
         while (cs_disasm_iter(handle, &code, &size, &pc, insn)) {
-            instruction& inst = get_instruction(insn->address, *insn);
+            instruction& inst =
+                get_instruction(insn->address, b.symbol(), *insn);
             b.add_instruction(inst);
             insn = &get_capstone_instruction(pc);
         }
@@ -268,7 +338,8 @@ private:
             if (!prev || !prev_line)
                 return;
             for (auto a = prev_address; a < current; ++a) {
-                pc_to_lines_[a] = prev_line;
+                if (pc_to_lines_[a] == nullptr)
+                    pc_to_lines_[a] = prev_line;
             }
         };
 
@@ -388,12 +459,18 @@ private:
     std::unordered_map<uint64_t /* pc */, const source_line*> pc_to_lines_;
     std::map<std::string /* name */, plugin*> available_plugins_;
     std::vector<plugin*> plugins_; /* active */
+    call_stack_recorder cs_recorder_;
     static const std::string env_var_plugins_name_;
 };
 
 const source_line* plugin::get_source_line(uint64_t pc)
 {
     return plugin_manager::get().get_source_line(pc);
+}
+
+plugin::call_stack plugin::get_call_stack()
+{
+    return plugin_manager::get().get_call_stack();
 }
 
 const std::string plugin_manager::env_var_plugins_name_ = "TCG_PLUGIN_CPP";

@@ -12,6 +12,7 @@ static void on_block_exec(translation_block** b_ptr)
 
 /* used to retrieve tb information before and after its generation */
 static translation_block** current_block_ptr;
+static TCGPluginInterface* plugin_tpi;
 
 static void before_gen_tb(const TCGPluginInterface* tpi)
 {
@@ -42,10 +43,9 @@ static void after_gen_tb(const TCGPluginInterface* tpi)
     }
 
     // magic offset to correct pc
-    uint64_t pc_offset = 0x4000000000;
-    pc -= pc_offset;
+    pc = get_correct_pc(pc);
     if (symbol_pc)
-        symbol_pc -= pc_offset;
+        symbol_pc = get_correct_pc(symbol_pc);
     translation_block* block = get_translation_block(
         pc, code, tb->size, symbol, symbol_pc, symbol_size, symbol_code, file);
     /* patch current_block ptr */
@@ -59,6 +59,31 @@ static void cpus_stopped(const TCGPluginInterface* tpi)
     plugin_close();
 }
 
+uint64_t get_correct_pc(uint64_t pc)
+{
+    uint64_t pc_offset = 0x4000000000;
+    if (pc < pc_offset)
+        return pc;
+    return pc - pc_offset;
+}
+
+#if defined(TARGET_X86_64)
+uint64_t get_current_top_of_stack(void)
+{
+    const CPUArchState* cpu_env = tpi_current_cpu_arch(plugin_tpi);
+    uint64_t stack_ptr = cpu_env->regs[R_ESP];
+    return tpi_guest_load64(plugin_tpi, stack_ptr);
+}
+#else
+uint64_t get_current_top_of_stack(void)
+{
+    fprintf(
+        stderr,
+        "get_current_top_of_stack not implemented for current architecture\n");
+    return 0;
+}
+#endif
+
 void tpi_init(TCGPluginInterface* tpi)
 {
     TPI_INIT_VERSION(tpi);
@@ -67,6 +92,7 @@ void tpi_init(TCGPluginInterface* tpi)
     tpi->before_gen_tb = before_gen_tb;
     tpi->after_gen_tb = after_gen_tb;
     tpi->cpus_stopped = cpus_stopped;
+    plugin_tpi = tpi;
 
     plugin_init(tpi->output);
 }

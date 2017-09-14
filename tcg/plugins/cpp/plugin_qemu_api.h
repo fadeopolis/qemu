@@ -35,6 +35,16 @@ void event_block_executed(translation_block* b);
 /* cpus are stopped (end of program) */
 void event_cpus_stopped(void);
 
+/* pc during execution has an offset. pc used through plugin_api interface are
+ * already corrected. If you read a pc directly (from memory for instance), you
+ * need to correct it using following function. Has no effect if called on an
+ * already corrected pc */
+uint64_t get_correct_pc(uint64_t pc);
+
+/* return value on top of the stack
+ * value is updated only at translation_block border. */
+uint64_t get_current_top_of_stack(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -105,11 +105,13 @@ private:
 class instruction
 {
 public:
-    instruction(const cs_insn& capstone_inst, const source_line* line)
-        : capstone_inst_(capstone_inst), line_(line)
+    instruction(class symbol& symbol, const cs_insn& capstone_inst,
+                const source_line* line)
+        : symbol_(symbol), capstone_inst_(capstone_inst), line_(line)
     {
     }
 
+    class symbol& symbol() const { return symbol_; }
     uint64_t pc() const { return capstone_inst_.address; }
     const std::string str() const
     {
@@ -122,6 +124,7 @@ public:
     static csh get_capstone_handle();
 
 private:
+    class symbol& symbol_;
     const cs_insn& capstone_inst_;
     const source_line* line_;
 };
@@ -175,6 +178,11 @@ public:
     const std::string& description() const { return description_; }
 
     static const source_line* get_source_line(uint64_t pc);
+    using call_stack = std::vector<const instruction*>;
+    /* return current call_stack. Current instruction is not included,
+     * only all callers that lead to current stack */
+    static call_stack get_call_stack();
+
 private:
     const std::string name_;
     const std::string description_;
