@@ -54,6 +54,8 @@
 #define CS_GROUPS_NAME "arm"
 #else
 #define CS_GROUPS_NAME ""
+#define CS_ARCH CS_ARCH_ALL /* to change */
+#define CS_MODE CS_MODE_LITTLE_ENDIAN /* to change */
 #endif
 #endif /* CONFIG_CAPSTONE */
 

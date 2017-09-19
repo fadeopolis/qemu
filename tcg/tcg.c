@@ -377,6 +377,26 @@ void tcg_context_init(TCGContext *s)
     }
 }
 
+/*
+ * Allocate TBs right before their corresponding translated code, making
+ * sure that TBs and code are on different cache lines.
+ */
+TranslationBlock *tcg_tb_alloc(TCGContext *s)
+{
+    uintptr_t align = qemu_icache_linesize;
+    TranslationBlock *tb;
+    void *next;
+
+    tb = (void *)ROUND_UP((uintptr_t)s->code_gen_ptr, align);
+    next = (void *)ROUND_UP((uintptr_t)(tb + 1), align);
+
+    if (unlikely(next > s->code_gen_highwater)) {
+        return NULL;
+    }
+    s->code_gen_ptr = next;
+    return tb;
+}
+
 void tcg_prologue_init(TCGContext *s)
 {
     size_t prologue_size, total_size;
@@ -418,6 +438,11 @@ void tcg_prologue_init(TCGContext *s)
         qemu_log_unlock();
     }
 #endif
+
+    /* Assert that goto_ptr is implemented completely.  */
+    if (TCG_TARGET_HAS_goto_ptr) {
+        tcg_debug_assert(s->code_gen_epilogue != NULL);
+    }
 }
 
 void tcg_func_start(TCGContext *s)
@@ -865,6 +890,7 @@ void tcg_gen_callN(TCGContext *s, void *func, TCGArg ret,
     const size_t  nb_cargs = 2;
     const size_t  nb_args  = real_args + nb_rets + nb_cargs;
     TCGArg *const args_ptr = &s->gen_opparam_buf[s->gen_next_parm_idx - nb_args];
+    (void)args_ptr; /* unused without tcg plugin */
 
     tcg_debug_assert(nb_args == (pi - pi_first));
 
