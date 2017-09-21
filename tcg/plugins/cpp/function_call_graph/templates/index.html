@@ -1,0 +1,24 @@
+{%include 'base.html' %}
+<a href="{{ dot_file }}">dot source</a>
+<a href="{{ svg_file }}">svg source</a>
+<a href="{{ json_file }}">json source</a>
+<div id="svg_file"></div>
+<table>
+    <tr>
+        <td>pc</td>
+        <td>name</td>
+        <td>size</td>
+        <td>binary file</td>
+        <td>source file</td>
+    </tr>
+    {% for s in symbols %}
+    <tr>
+        <td><a href="{{ s.url }}">{{s.pc}}</a></td>
+        <td>{{s.name}}</td>
+        <td>{{s.size}}</td>
+        <td>{{s.binary}}</td>
+        <td>{{s.src}}</td>
+    </tr>
+    {% endfor %}
+</table>
+{%include 'footer.html' %}

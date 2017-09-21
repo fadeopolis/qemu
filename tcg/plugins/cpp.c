@@ -40,6 +40,8 @@ static void after_gen_tb(const TCGPluginInterface* tpi)
     const uint8_t* symbol_code = NULL;
     if (lookup_symbol4(pc, &symbol, &file, &symbol_pc, &symbol_size)) {
         symbol_code = (const uint8_t*)tpi_guest_ptr(tpi, symbol_pc);
+    } else { // symbol_pc equals to pc
+        symbol_pc = 0;
     }
 
     // magic offset to correct pc

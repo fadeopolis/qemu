@@ -41,7 +41,7 @@ void event_cpus_stopped(void);
  * already corrected pc */
 uint64_t get_correct_pc(uint64_t pc);
 
-/* return value on top of the stack
+/* return value on top of the stack for current thread of execution.
  * value is updated only at translation_block border. */
 uint64_t get_current_top_of_stack(void);
 

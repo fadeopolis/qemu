@@ -54,7 +54,8 @@ public:
         std::unordered_map<uint64_t /* pc */, uint64_t /* counter */>& hits)
     {
         csh handle = instruction::get_capstone_handle();
-        cs_insn* inst = cs_malloc(handle);
+        instruction::capstone_inst_ptr cs_inst =
+            instruction::get_new_capstone_instruction();
 
         uint64_t pc = s.pc();
         size_t size = s.size();
@@ -71,11 +72,13 @@ public:
         const char* white = "\033[1;37m";
 
         // disassemble whole symbol
-        while (cs_disasm_iter(handle, &code, &size, &pc, inst)) {
-            uint64_t count = hits[inst->address];
-            const source_line* line = get_source_line(inst->address);
+        while (cs_disasm_iter(handle, &code, &size, &pc, cs_inst.get())) {
+            uint64_t i_pc = cs_inst->address;
+            const instruction& i = get_instruction(i_pc, s, std::move(cs_inst));
+            uint64_t count = hits[i.pc()];
+            const source_line* line = i.line();
             std::string source;
-            if (line != prev_line) {
+            if (line && line != prev_line) {
                 source = line->file().path() + ":" +
                          std::to_string(line->number()) + " " + line->line();
                 source_hits[line] = count;
@@ -85,22 +88,22 @@ public:
             if (!source.empty()) {
                 fprintf(stderr, "%s\n", source.c_str());
             }
-            fprintf(stderr, "%s%8" PRIu64 "%s | 0x%" PRIx64 ":\t %s%s\t %s%s\n",
-                    count ? green : black, count, black, inst->address,
-                    count ? green : black, inst->mnemonic, inst->op_str, white);
+            fprintf(stderr, "%s%8" PRIu64 "%s | 0x%" PRIx64 ":\t%s%s%s\n",
+                    count ? green : black, count, black, i.pc(),
+                    count ? green : black, i.str().c_str(), white);
+            cs_inst = instruction::get_new_capstone_instruction();
         }
         std::cerr << "--------------------------------------------\n";
         if (!source_hits.empty()) {
             std::vector<std::pair<const source_line*, uint64_t>> lines;
-            std::copy(source_hits.begin(), source_hits.end(),
-                      std::back_inserter(lines));
+            lines.insert(lines.end(), source_hits.begin(), source_hits.end());
             std::sort(lines.begin(), lines.end(),
                       [](const auto& p1, const auto& p2) {
                           const source_line& l1 = *p1.first;
                           const source_line& l2 = *p2.first;
-                          if (l1.file().path() < l2.file().path())
-                              return true;
-                          return l1.number() < l2.number();
+                          if (l1.file().path() == l2.file().path())
+                              return l1.number() < l2.number();
+                          return l1.file().path() < l2.file().path();
                       });
             for (const auto& p : lines) {
                 const source_line& l = *p.first;
@@ -110,7 +113,6 @@ public:
                         count ? green : black, count, l.line().c_str(), white);
             }
         }
-        cs_free(inst, 1);
     }
 
 private:

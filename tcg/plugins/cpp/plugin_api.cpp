@@ -11,8 +11,10 @@
 #include <cstring>
 #include <fcntl.h>
 #include <map>
+#include <mutex>
 #include <set>
 #include <sstream>
+#include <thread>
 #include <unistd.h>
 #include <unordered_map>
 #include <vector>
@@ -65,47 +67,87 @@ csh instruction::get_capstone_handle()
     return capstone::get().handle();
 }
 
-/* maintain a call_stack from all blocks executed */
-class call_stack_recorder
+class call_stack_entry
 {
 public:
-    call_stack_recorder() { call_stack_.reserve(1000); }
-
-    void on_block_enter(translation_block& b) { track_stack(b); }
-
-    plugin::call_stack get_call_stack() const
+    call_stack_entry(const instruction* caller, uint64_t expected_next_pc,
+                     translation_block* tb)
+        : caller_(caller), expected_next_pc_(expected_next_pc), tb_(tb)
     {
-        plugin::call_stack cs;
+    }
+
+    const instruction* caller() const { return caller_; }
+    uint64_t expected_next_pc() const { return expected_next_pc_; }
+    translation_block* tb() const { return tb_; }
+
+private:
+    const instruction* caller_;
+    uint64_t expected_next_pc_;
+    translation_block* tb_;
+};
+
+/* keeps track of block chaining.
+ * maintain a call_stack for all blocks executed. */
+class block_chain_recorder
+{
+public:
+    block_chain_recorder() { call_stack_.reserve(1000); }
+
+    translation_block::block_transition_type
+    on_block_exec(translation_block& b, translation_block*& caller)
+    {
+        last_executed_block_ = current_block_;
+        current_block_ = &b;
+
+        return track_stack(b, last_executed_block_, caller);
+    }
+
+    translation_block* get_last_block_executed() const
+    {
+        return last_executed_block_;
+    }
+
+    call_stack get_call_stack() const
+    {
+        call_stack cs;
         cs.reserve(call_stack_.size() + 1); /* +1 to push current instruction */
-        for (const auto& p : call_stack_) {
-            cs.emplace_back(p.first);
+        for (const auto& cs_entry : call_stack_) {
+            cs.emplace_back(cs_entry.caller());
         }
         return cs;
     }
 
+    uint64_t get_current_symbol_pc() { return current_symbol_start_pc_; }
+
 private:
-    void track_stack(translation_block& b)
+    translation_block::block_transition_type
+    track_stack(translation_block& b, translation_block* last_executed_block,
+                translation_block*& caller)
     {
-        uint64_t expected_block_pc = next_block_pc_;
-        const instruction* exit_block_instr = last_instr_block;
         uint64_t current_pc = b.pc();
 
-        next_block_pc_ = current_pc + b.size();
-        last_instr_block = b.instructions().back();
+        using tt = translation_block::block_transition_type;
 
-        if (!exit_block_instr) /* first time */
-            return;
+        if (!last_executed_block) { /* first time */
+            current_symbol_start_pc_ = current_pc;
+            return tt::START;
+        }
+
+        uint64_t expected_block_pc =
+            last_executed_block->pc() + last_executed_block->size();
 
         if (expected_block_pc == current_pc) /* linear execution */
-            return;
+            return tt::SEQUENTIAL;
 
         /* check if we returned */
         for (auto it = call_stack_.end(); it != call_stack_.begin(); --it) {
-            uint64_t expected_pc = it->second;
+            uint64_t expected_pc = it->expected_next_pc();
             if (expected_pc == current_pc) /* this is a function return */
             {
+                caller = it->tb();
+                current_symbol_start_pc_ = caller->symbol().pc();
                 call_stack_.erase(it, call_stack_.end());
-                return;
+                return tt::RETURN;
             }
         }
 
@@ -114,18 +156,21 @@ private:
 
         if (top_of_stack != expected_block_pc) {
             /* this is a simple jump */
-            return;
+            return tt::JUMP;
         }
 
         /* this is a call */
-        call_stack_.emplace_back(exit_block_instr, expected_block_pc);
+        caller = last_executed_block;
+        current_symbol_start_pc_ = current_pc;
+        call_stack_.emplace_back(last_executed_block->instructions().back(),
+                                 expected_block_pc, last_executed_block);
+        return tt::CALL;
     }
 
-    uint64_t next_block_pc_ = 0;
-    const instruction* last_instr_block = nullptr;
-    std::vector<std::pair<const instruction* /* caller */,
-                          uint64_t /* expected next pc */>>
-        call_stack_;
+    std::vector<call_stack_entry> call_stack_;
+    translation_block* last_executed_block_ = nullptr;
+    translation_block* current_block_ = nullptr;
+    uint64_t current_symbol_start_pc_ = 0;
 };
 
 // manager for plugins
@@ -148,30 +193,59 @@ public:
                           size_t symbol_size, const uint8_t* symbol_code,
                           const std::string& binary_file_path)
     {
-        auto it = blocks_.find(pc);
-        if (it != blocks_.end()) {
-            return it->second;
+        std::lock_guard<std::mutex> mt_lock(mt_mutex_);
+
+        auto it = blocks_mapping_.find(pc);
+        if (it != blocks_mapping_.end()) {
+            return *it->second;
         }
 
         binary_file& file = get_binary_file(binary_file_path);
         symbol& s =
             get_symbol(symbol_name, symbol_pc, symbol_size, symbol_code, file);
 
+        uint64_t new_id = block_id_;
+        ++block_id_;
+
         translation_block& b =
             blocks_
-                .emplace(std::piecewise_construct, std::forward_as_tuple(pc),
-                         std::forward_as_tuple(pc, size, s))
+                .emplace(std::piecewise_construct,
+                         std::forward_as_tuple(new_id),
+                         std::forward_as_tuple(new_id, pc, size, s))
                 .first->second;
+        blocks_mapping_.emplace(pc, &b);
         // add instructions for block
         disassemble_block(b, pc, code, size);
+
         return b;
     }
 
-    const source_line* get_source_line(uint64_t pc) { return pc_to_lines_[pc]; }
-
-    plugin::call_stack get_call_stack()
+    // get or create an instruction
+    instruction& get_instruction(uint64_t pc, symbol& sym,
+                                 instruction::capstone_inst_ptr capstone_inst)
     {
-        return cs_recorder_.get_call_stack();
+        auto it = instructions_mapping_.find(pc);
+        if (it != instructions_mapping_.end()) {
+            return *it->second;
+        }
+
+        uint64_t new_id = instruction_id_;
+        ++instruction_id_;
+
+        instruction& inst =
+            instructions_
+                .emplace(
+                    std::piecewise_construct, std::forward_as_tuple(new_id),
+                    std::forward_as_tuple(new_id, sym, std::move(capstone_inst),
+                                          pc_to_lines_[pc]))
+                .first->second;
+        instructions_mapping_.emplace(pc, &inst);
+        return inst;
+    }
+
+    call_stack get_call_stack()
+    {
+        return get_current_thread_bc().get_call_stack();
     }
 
     // register plugin @p as available
@@ -194,10 +268,36 @@ public:
         }
     }
 
+    block_chain_recorder& get_current_thread_bc()
+    {
+        return bc_recorders_[std::this_thread::get_id()];
+    }
+
     void event_block_executed(translation_block& b)
     {
-        cs_recorder_.on_block_enter(b); // track stack
+        std::lock_guard<std::mutex> mt_lock(mt_mutex_);
 
+        translation_block* caller = nullptr;
+        /* maintain call stack and detect call/ret */
+        block_chain_recorder& bc_recorder = get_current_thread_bc();
+        translation_block::block_transition_type transition_type =
+            bc_recorder.on_block_exec(b, caller);
+
+        /* correct symbol by using call stack */
+        uint64_t current_symbol_pc = bc_recorder.get_current_symbol_pc();
+        if (b.symbol().pc() != current_symbol_pc) {
+            symbol& s = get_symbol("", current_symbol_pc, 0, nullptr,
+                                   b.symbol().file());
+            b.set_symbol(s);
+        }
+
+        /* block transition */
+        for (const auto& p : plugins_) {
+            p->on_block_transition(b, bc_recorder.get_last_block_executed(),
+                                   transition_type, caller);
+        }
+
+        /* block execution */
         for (const auto& p : plugins_) {
             p->on_block_enter(b);
         }
@@ -231,7 +331,10 @@ private:
         }
 
         std::string error;
-        read_dwarf(path, error);
+        if (!path.empty() && !read_dwarf(path, error)) {
+            fprintf(stderr, "WARNING: error reading dwarf for file %s: %s\n",
+                    path.c_str(), error.c_str());
+        }
 
         return binary_files_.emplace(path, path).first->second;
     }
@@ -250,76 +353,51 @@ private:
     symbol& get_symbol(const std::string& name, uint64_t pc, size_t size,
                        const uint8_t* code, binary_file& file)
     {
-        auto it = symbols_.find(pc);
-        if (it != symbols_.end()) {
-            return it->second;
+        auto it = symbols_mapping_.find(pc);
+        if (it != symbols_mapping_.end()) {
+            return *it->second;
         }
+
+        uint64_t new_id = symbol_id_;
+        ++symbol_id_;
 
         symbol& s =
             symbols_
-                .emplace(std::piecewise_construct, std::forward_as_tuple(pc),
-                         std::forward_as_tuple(name, pc, size, code, file))
+                .emplace(
+                    std::piecewise_construct, std::forward_as_tuple(new_id),
+                    std::forward_as_tuple(new_id, name, pc, size, code, file))
                 .first->second;
+        symbols_mapping_.emplace(pc, &s);
         file.add_symbol(s);
         return s;
-    }
-
-    // get or create an instruction
-    instruction& get_instruction(uint64_t pc, symbol& sym,
-                                 cs_insn& capstone_inst)
-    {
-        auto it = instructions_.find(pc);
-        if (it != instructions_.end()) {
-            return it->second;
-        }
-
-        instruction& inst =
-            instructions_
-                .emplace(
-                    std::piecewise_construct, std::forward_as_tuple(pc),
-                    std::forward_as_tuple(sym, capstone_inst, pc_to_lines_[pc]))
-                .first->second;
-        return inst;
-    }
-
-    // get or create a capstone instruction
-    cs_insn& get_capstone_instruction(uint64_t pc)
-    {
-        auto it = capstone_instructions_.find(pc);
-        if (it != capstone_instructions_.end()) {
-            return *(it->second);
-        }
-
-        std::unique_ptr<cs_insn, void (*)(cs_insn*)> insn(
-            cs_malloc(capstone::get().handle()),
-            [](cs_insn* inst) { cs_free(inst, 1); });
-        return *(
-            capstone_instructions_.emplace(pc, std::move(insn)).first->second);
     }
 
     // disassemble instructions of a given block @b and and them to it
     void disassemble_block(translation_block& b, uint64_t pc,
                            const uint8_t* code, size_t size)
     {
-        cs_insn* insn = &get_capstone_instruction(pc);
+        instruction::capstone_inst_ptr insn =
+            instruction::get_new_capstone_instruction();
         csh handle = capstone::get().handle();
-        while (cs_disasm_iter(handle, &code, &size, &pc, insn)) {
+        while (cs_disasm_iter(handle, &code, &size, &pc, insn.get())) {
+            uint64_t i_pc = insn->address;
             instruction& inst =
-                get_instruction(insn->address, b.symbol(), *insn);
+                get_instruction(i_pc, b.symbol(), std::move(insn));
             b.add_instruction(inst);
-            insn = &get_capstone_instruction(pc);
+            insn = instruction::get_new_capstone_instruction();
         }
     }
 
     /* read and record cu source files info */
-    void read_debug_cu(Dwarf_Die cu)
+    bool read_debug_cu(Dwarf_Die cu, std::string& error)
     {
         Dwarf_Line* lines;
         Dwarf_Signed count;
         Dwarf_Error de;
 
         if (dwarf_srclines(cu, &lines, &count, &de) != DW_DLV_OK) {
-            return;
+            error = std::string("read_debug_cu|get_src: ") + dwarf_errmsg(de);
+            return false;
         }
 
         Dwarf_Addr low_pc = 0;
@@ -352,7 +430,9 @@ private:
             if (dwarf_lineaddr(line, &address, &de) != DW_DLV_OK ||
                 dwarf_lineno(line, &lineno, &de) != DW_DLV_OK ||
                 dwarf_linesrc(line, &file, &de) != DW_DLV_OK) {
-                continue;
+                error =
+                    std::string("read_debug_cu|read_line: ") + dwarf_errmsg(de);
+                return false;
             }
 
             register_address(address, prev_address, prev_source_line);
@@ -364,6 +444,7 @@ private:
 
         // register address for last instruction
         register_address(high_pc, prev_address, prev_source_line);
+        return true;
     }
 
     /* read dwarf file @file */
@@ -400,7 +481,10 @@ private:
                 die = ret_die;
                 if (dwarf_tag(die, &tag, &de) == DW_DLV_OK &&
                     tag == DW_TAG_compile_unit) {
-                    read_debug_cu(die);
+                    if (!read_debug_cu(die, error)) {
+                        cleanup();
+                        return false;
+                    }
                 }
             }
         }
@@ -448,27 +532,44 @@ private:
     }
 
     FILE* out_ = stderr;
-    std::unordered_map<uint64_t /* pc */,
-                       std::unique_ptr<cs_insn, void (*)(cs_insn*)>>
-        capstone_instructions_;
-    std::unordered_map<uint64_t /* pc */, instruction> instructions_;
-    std::unordered_map<uint64_t /* pc */, translation_block> blocks_;
-    std::unordered_map<uint64_t /* pc */, symbol> symbols_;
+
+    uint64_t instruction_id_ = 0;
+    uint64_t block_id_ = 0;
+    uint64_t symbol_id_ = 0;
+    std::unordered_map<uint64_t /* id */, instruction> instructions_;
+    std::unordered_map<uint64_t /* id */, translation_block> blocks_;
+    std::unordered_map<uint64_t /* id */, symbol> symbols_;
+    std::unordered_map<uint64_t /* pc */, instruction*> instructions_mapping_;
+    std::unordered_map<uint64_t /* pc */, translation_block*> blocks_mapping_;
+    std::unordered_map<uint64_t /* pc */, symbol*> symbols_mapping_;
+
     std::unordered_map<std::string /* name */, binary_file> binary_files_;
     std::unordered_map<std::string /* path */, source_file> source_files_;
     std::unordered_map<uint64_t /* pc */, const source_line*> pc_to_lines_;
     std::map<std::string /* name */, plugin*> available_plugins_;
     std::vector<plugin*> plugins_; /* active */
-    call_stack_recorder cs_recorder_;
     static const std::string env_var_plugins_name_;
+    std::unordered_map<std::thread::id, block_chain_recorder> bc_recorders_;
+    std::mutex mt_mutex_;
 };
 
-const source_line* plugin::get_source_line(uint64_t pc)
+instruction::capstone_inst_ptr instruction::get_new_capstone_instruction()
 {
-    return plugin_manager::get().get_source_line(pc);
+    instruction::capstone_inst_ptr insn(
+        cs_malloc(capstone::get().handle()),
+        [](cs_insn* inst) { cs_free(inst, 1); });
+    return insn;
 }
 
-plugin::call_stack plugin::get_call_stack()
+instruction&
+plugin::get_instruction(uint64_t pc, symbol& sym,
+                        instruction::capstone_inst_ptr capstone_inst)
+{
+    return plugin_manager::get().get_instruction(pc, sym,
+                                                 std::move(capstone_inst));
+}
+
+call_stack plugin::get_call_stack()
 {
     return plugin_manager::get().get_call_stack();
 }

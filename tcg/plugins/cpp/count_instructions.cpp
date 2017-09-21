@@ -32,8 +32,8 @@ public:
 
         std::vector<std::pair<uint64_t, uint64_t>> vec_inst;
 
-        std::copy(instructions_count_.begin(), instructions_count_.end(),
-                  std::back_inserter(vec_inst));
+        vec_inst.insert(vec_inst.end(), instructions_count_.begin(),
+                        instructions_count_.end());
         std::sort(vec_inst.begin(), vec_inst.end(),
                   [](const auto& p1, const auto& p2) {
                       return p1.second > p2.second;

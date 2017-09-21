@@ -214,7 +214,7 @@ tcg-plugin-coverage.so: LIBS += $(CAPSTONE_LDFLAGS)
 
 # cxx plugin
 
-tcg-plugin-cpp.so: LIBS += $(CAPSTONE_LDFLAGS) $(LD_FLAGS) -ldwarf
+tcg-plugin-cpp.so: LIBS += $(CAPSTONE_LDFLAGS) $(LDFLAGS) -ldwarf
 
 CXX_PLUGIN_FLAGS := -Wall -Werror -Wextra -pedantic -std=c++14 \
 					$(CAPSTONE_CFLAGS) $(CFLAGS) -fno-PIE -fPIC

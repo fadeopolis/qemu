@@ -1,0 +1,40 @@
+{%include 'base.html' %}
+<a href="{{ index_file }}">Go back to index</a>
+<a href="{{ dot_file }}">dot source</a>
+<a href="{{ svg_file }}">svg source</a>
+<div id="svg_file"></div>
+
+<p>Source</p>
+<table>
+    <tr>
+        <td>file</td>
+        <td>line</td>
+        <td>src</td>
+        <td>executed</td>
+    </tr>
+    {% for s in sources %}
+    <tr>
+        <td>{{s.file}}</td>
+        <td>{{s.line}}</td>
+        <td>{{s.src}}</td>
+        <td>{{s.executed}}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<p>Assembly</p>
+<table>
+    <tr>
+        <td>pc</td>
+        <td>asm</td>
+        <td>executed</td>
+    </tr>
+    {% for a in assembly %}
+    <tr>
+        <td>{{a.pc}}</td>
+        <td>{{a.asm}}</td>
+        <td>{{a.executed}}</td>
+    </tr>
+    {% endfor %}
+</table>
+{%include 'footer.html' %}

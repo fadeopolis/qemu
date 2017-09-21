@@ -13,7 +13,9 @@ public:
 
     void on_program_start() override { std::cerr << "start program\n"; }
 
-    void on_block_enter(translation_block& b) override
+    void on_block_transition(translation_block& b, translation_block*,
+                             translation_block::block_transition_type type,
+                             translation_block*) override
     {
         std::cerr << "-----------------------------------\n";
         if (!b.symbol().name().empty())
@@ -24,11 +26,24 @@ public:
         std::cerr << "block has " << b.instructions().size()
                   << " instructions\n";
 
-        if (next_block_pc_ == b.pc())
+        using tt = translation_block::block_transition_type;
+        switch (type) {
+        case tt::START:
+            std::cerr << "reached by program start\n";
+            break;
+        case tt::CALL:
+            std::cerr << "reached by call\n";
+            break;
+        case tt::RETURN:
+            std::cerr << "reached by return\n";
+            break;
+        case tt::SEQUENTIAL:
             std::cerr << "reached by sequential execution\n";
-        else
+            break;
+        case tt::JUMP:
             std::cerr << "reached by jump\n";
-        next_block_pc_ = b.pc() + b.size();
+            break;
+        }
     }
 
     void on_instruction_exec(translation_block&, instruction& i) override
@@ -51,7 +66,6 @@ public:
     void on_program_end() override { std::cerr << "end program\n"; }
 
 private:
-    uint64_t next_block_pc_ = 0;
 };
 
 REGISTER_PLUGIN(plugin_print_instructions);
