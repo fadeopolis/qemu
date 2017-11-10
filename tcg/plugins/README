@@ -147,6 +147,32 @@ Note that currently notification works in a per basic block basis,
 that is, the plugin is notified for any basic block that contains
 TPI_LOW_PC or TPI_HIGH_PC.
 
+CPP Plugins
+===========
+
+In more to classic plugins, c++ support was added. To enable this, add
+``--enable-tcg-plugin-cpp`` option to the ``configure`` command.
+
+This builds a special plugin whose name is tcg-plugin-cpp.so, that contains
+itself several plugins. This interface hides QEMU internals and leaves user with
+a read-only view of the code executed.
+
+Please see plugins in tcg/plugins/cpp for example. API is described in
+tcg/plugins/cpp/plugin_api.h.
+
+Plugins configuration is made through env var TCG_PLUGIN_CPP.
+
+``./x86_64-linux-user/qemu-x86_64 -tcg-plugin cpp /bin/true`` will list cpp
+plugins available.
+
+``TCG_PLUGIN_CPP=count_instructions,print_instructions
+./x86_64-linux-user/qemu-x86_64 -tcg-plugin cpp /bin/true`` will enable plugins
+count_instructions and print_instructions.
+
+Building support for CPP plugins requires:
+- c++14 compiler (g++-6 used)
+- capstone library
+- dwarf library (libdwarf-dev)
 
 How to Write TCG Plugins?
 =========================

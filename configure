@@ -313,6 +313,7 @@ rdma=""
 gprof="no"
 syscall_fwd_compat="no"
 tcg_plugin="no"
+tcg_plugin_cpp="no"
 capstone=""
 debug_tcg="no"
 debug="no"
@@ -967,9 +968,13 @@ for opt do
   ;;
   --disable-syscall-fwd-compat) syscall_fwd_compat="no"
   ;;
-  --enable-tcg-plugin) tcg_plugin="yes"
+  --enable-tcg-plugin) tcg_plugin="yes";
   ;;
-  --disable-tcg-plugin) tcg_plugin="no"
+  --enable-tcg-plugin-cpp) tcg_plugin="yes"; tcg_plugin_cpp="yes"
+  ;;
+  --disable-tcg-plugin) tcg_plugin="no"; tcg_plugin_cpp="no"
+  ;;
+  --disable-tcg-plugin-cpp) tcg_plugin_cpp="no"
   ;;
   --disable-capstone) capstone="no"
   ;;
@@ -1556,6 +1561,7 @@ Optional stm features, enabled with --enable-FEATURE and
 disabled with --disable-FEATURE, default is disabled:
   syscall-fwd-compat     enable syscall forward compatibility in linux-user mode
   tcg-plugin             enable TCG plugin support
+  tcg-plugin-cpp         enable TCG CPP plugin support
   capstone               enable capstone support for TCG plugins
 
 NOTE: The object files are built at the place where configure is launched
@@ -5351,6 +5357,7 @@ echo "host big endian   $bigendian"
 echo "target list       $target_list"
 echo "syscall fwd compat $syscall_fwd_compat"
 echo "tcg plugin support $tcg_plugin"
+echo "tcg plugin cpp support $tcg_plugin_cpp"
 echo "capstone support   $capstone"
 echo "gprof enabled     $gprof"
 echo "sparse enabled    $sparse"
@@ -5533,6 +5540,10 @@ if test "$tcg_plugin" = "yes" ; then
   echo "CONFIG_TCG_PLUGIN=y" >> $config_host_mak
   LIBS="-ldl $LIBS"
   LDFLAGS="-rdynamic $LDFLAGS"
+fi
+
+if test "$tcg_plugin_cpp" = "yes" ; then
+  echo "CONFIG_TCG_PLUGIN_CPP=y" >> $config_host_mak
 fi
 
 if test "$capstone" = "yes" ; then

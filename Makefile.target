@@ -213,6 +213,7 @@ tcg-plugin-coverage.o: CFLAGS += $(CAPSTONE_CFLAGS)
 tcg-plugin-coverage.so: LIBS += $(CAPSTONE_LDFLAGS)
 
 # cxx plugin
+ifdef CONFIG_TCG_PLUGIN_CPP
 
 tcg-plugin-cpp.so: LIBS += $(CAPSTONE_LDFLAGS) $(LDFLAGS) -ldwarf
 
@@ -226,6 +227,7 @@ cpp-%.o: $(SRC_PATH)/tcg/plugins/cpp/%.cpp
 -include $(CPP_DEPS)
 
 tcg-plugin-cpp.so: tcg-plugin-cpp.o $(CPP_PLUGIN_OBJS)
+endif # CONFIG_TCG_PLUGIN_CPP
 
 endif # CONFIG_TCG_PLUGIN
 

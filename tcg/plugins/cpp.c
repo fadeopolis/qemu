@@ -2,6 +2,7 @@
 
 #include "tcg-plugin.h"
 
+#ifdef CONFIG_TCG_PLUGIN_CPP
 #include "cpp/plugin_qemu_api.h"
 #include "disas/disas.h"
 
@@ -98,3 +99,12 @@ void tpi_init(TCGPluginInterface* tpi)
 
     plugin_init(tpi->output);
 }
+
+#else
+void tpi_init(TCGPluginInterface* tpi)
+{
+    fprintf(stderr, "cpp plugin support is not activated\n");
+    exit(EXIT_FAILURE);
+}
+
+#endif /* CONFIG_TCG_PLUGIN_CPP */
