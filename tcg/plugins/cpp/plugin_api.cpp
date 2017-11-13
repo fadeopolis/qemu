@@ -139,7 +139,7 @@ private:
         if (expected_block_pc == current_pc) /* linear execution */
             return tt::SEQUENTIAL;
 
-        /* check if we returned */
+        /* check if we returned, walk the stack to find expected pc */
         for (auto it = call_stack_.end(); it != call_stack_.begin(); --it) {
             uint64_t expected_pc = it->expected_next_pc();
             if (expected_pc == current_pc) /* this is a function return */
@@ -151,15 +151,14 @@ private:
             }
         }
 
-        uint64_t top_of_stack = get_current_top_of_stack();
-        top_of_stack = get_correct_pc(top_of_stack);
+        uint64_t return_address = get_callee_return_address();
 
-        if (top_of_stack != expected_block_pc) {
+        if (return_address != expected_block_pc) {
             /* this is a simple jump */
             return tt::JUMP;
         }
 
-        /* this is a call */
+        /* this is a call, because return address was stored */
         caller = last_executed_block;
         current_symbol_start_pc_ = current_pc;
         call_stack_.emplace_back(last_executed_block->instructions().back(),

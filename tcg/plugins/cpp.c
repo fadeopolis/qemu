@@ -15,6 +15,30 @@ static void on_block_exec(translation_block** b_ptr)
 static translation_block** current_block_ptr;
 static TCGPluginInterface* plugin_tpi;
 
+/* pc during execution has an offset. pc used through plugin_api interface are
+ * already corrected. If you read a pc directly (from memory for instance), you
+ * need to correct it using following function. Has no effect if called on an
+ * already corrected pc */
+static uint64_t get_correct_pc(uint64_t pc)
+{
+    uint64_t pc_offset = 0x4000000000;
+    if (pc < pc_offset)
+        return pc;
+    return pc - pc_offset;
+}
+
+#if defined(TARGET_X86_64)
+/* on x86_64, return address in on the top of stack after a call is done */
+uint64_t get_callee_return_address(void)
+{
+    const CPUArchState* cpu_env = tpi_current_cpu_arch(plugin_tpi);
+    uint64_t stack_ptr = cpu_env->regs[R_ESP];
+    return get_correct_pc(tpi_guest_load64(plugin_tpi, stack_ptr));
+}
+#else
+#error "get_callee_return_address not implemented for current architecture"
+#endif
+
 static void before_gen_tb(const TCGPluginInterface* tpi)
 {
     current_block_ptr = malloc(sizeof(translation_block*));
@@ -61,31 +85,6 @@ static void cpus_stopped(const TCGPluginInterface* tpi)
 
     plugin_close();
 }
-
-uint64_t get_correct_pc(uint64_t pc)
-{
-    uint64_t pc_offset = 0x4000000000;
-    if (pc < pc_offset)
-        return pc;
-    return pc - pc_offset;
-}
-
-#if defined(TARGET_X86_64)
-uint64_t get_current_top_of_stack(void)
-{
-    const CPUArchState* cpu_env = tpi_current_cpu_arch(plugin_tpi);
-    uint64_t stack_ptr = cpu_env->regs[R_ESP];
-    return tpi_guest_load64(plugin_tpi, stack_ptr);
-}
-#else
-uint64_t get_current_top_of_stack(void)
-{
-    fprintf(
-        stderr,
-        "get_current_top_of_stack not implemented for current architecture\n");
-    return 0;
-}
-#endif
 
 void tpi_init(TCGPluginInterface* tpi)
 {
