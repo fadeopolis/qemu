@@ -28,6 +28,42 @@
 static pthread_mutex_t mmap_mutex = PTHREAD_MUTEX_INITIALIZER;
 static __thread int mmap_lock_count;
 
+/* keep track of files mapped */
+struct mapinfo {
+    const char *filename;
+    uint64_t addr;
+    size_t length;
+    struct mapinfo *next;
+};
+struct mapinfo *mapinfos = NULL;
+
+const char* get_mapped_file(uint64_t addr)
+{
+    for (struct mapinfo *it = mapinfos; it != NULL; it = it->next)
+    {
+        if (addr >= it->addr && addr < it->addr + it->length)
+            return it->filename;
+    }
+    return NULL;
+}
+
+static void add_mapinfo(const char* filename, uint64_t addr, size_t length)
+{
+    struct mapinfo *info = g_new(struct mapinfo, 1);
+    info->filename = g_strdup(filename);
+    info->addr = addr;
+    info->length = length;
+    info->next = mapinfos;
+    mapinfos = info;
+    /*
+    fprintf(stderr, "New mapping %s at 0x%" PRIx64 ", length %lu, end 0x%" PRIx64 "\n",
+            mapinfos->filename,
+            mapinfos->addr,
+            mapinfos->length,
+            addr + length - 1);
+    */
+}
+
 void mmap_lock(void)
 {
     if (mmap_lock_count++ == 0) {
@@ -565,6 +601,13 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
     if ((prot & PROT_EXEC) && (qemu_log_enabled() || tcg_plugin_enabled())) {
         load_symbols_from_fd(fd, start);
     }
+    char proc_fd[PATH_MAX];
+    char filename[PATH_MAX];
+    memset(proc_fd, 0, PATH_MAX);
+    memset(filename, 0, PATH_MAX);
+    snprintf(proc_fd, PATH_MAX, "/proc/self/fd/%d", fd);
+    if (readlink(proc_fd, filename, PATH_MAX) != -1)
+        add_mapinfo(filename, start, len);
 
     tb_invalidate_phys_range(start, start + len);
     mmap_unlock();

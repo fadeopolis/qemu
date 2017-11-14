@@ -6,6 +6,9 @@
 #include "cpp/plugin_qemu_api.h"
 #include "disas/disas.h"
 
+/* defined in linux-user/qemu.h */
+extern const char* get_mapped_file(uint64_t addr);
+
 static void on_block_exec(translation_block** b_ptr)
 {
     event_block_executed(*b_ptr);
@@ -66,8 +69,12 @@ static void after_gen_tb(const TCGPluginInterface* tpi)
     if (lookup_symbol4(pc, &symbol, &file, &symbol_pc, &symbol_size)) {
         symbol_code = (const uint8_t*)tpi_guest_ptr(tpi, symbol_pc);
     } else { // symbol_pc equals to pc
-        symbol_pc = 0;
+        symbol_pc = pc;
     }
+    /* get filename from list of mappings */
+    file = get_mapped_file(pc);
+    if (!file)
+        file = "";
 
     // magic offset to correct pc
     pc = get_correct_pc(pc);
