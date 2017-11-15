@@ -155,28 +155,38 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
             b_label += '\n'
             b_label += 'LOOP ' + hex(loop_header['pc'])
 
-        b_symbol_id = b['symbol']['id']
-        called_symbol = None
-        for succ in b['successors']:
-            succ_symbol_id = succ['symbol']['id']
-            if succ_symbol_id != b_symbol_id:
-                called_symbol = succ['symbol']
-                continue
-            dot.edge(str(id), str(succ['id']))
+        called_symbols = dict()
 
-        if called_symbol:
-            called_symbol_name = called_symbol['name']
+        for succ in b['successors']:
+            is_in_same_symbol = False
+            for b in sym['basic_blocks']:
+                if b['id'] == succ['id']:
+                    is_in_same_symbol = True
+
+            if is_in_same_symbol:
+                dot.edge(str(id), str(succ['id']))
+            else:
+                for s in succ['symbols']:
+                    called_symbols[s['id']] = s
+
+        if len(called_symbols.values()) > 0:
+            b_label += '\n_______________________'
+
+        for s in called_symbols.values():
+            called_symbol_name = s['name']
             if not called_symbol_name:
                 called_symbol_name = hex(pc)
-            url_sym = symbol_file_prefix + str(called_symbol['id']) + '.html'
-            b_label += '\n_______________________'
-            b_label += '\n'
-            b_label += 'CALL ' + called_symbol_name
+            b_label += '\nCALL ' + called_symbol_name
 
-        if called_symbol:
-            dot.node(str(id), label=b_label, URL=url_sym)
-        else:
-            dot.node(str(id), label=b_label)
+        if len(b['symbols']) > 1:
+            b_label += '\n_______________________'
+            for s in b['symbols']:
+                name = s['name']
+                if not name:
+                    name = hex(s['pc'])
+                b_label += '\nSHARED BLOCK ' + name
+
+        dot.node(str(id), label=b_label)
 
     log().info('generate symbol file %s', output_file)
     out = j2env.get_template(template_file).render(
@@ -232,7 +242,7 @@ def generate_files(input_json, output_dir):
         b['successors'] = [blocks_dict[succ_id] for succ_id in b['successors']]
         if b['loop_header']:
             b['loop_header'] = blocks_dict[b['loop_header']]
-        b['symbol'] = symbols_dict[b['symbol']]
+        b['symbols'] = [symbols_dict[sym_id] for sym_id in b['symbols']]
 
     generate_index(j['symbols'], 'data.json', output_dir, output_index, j2env,
                    'index.html')

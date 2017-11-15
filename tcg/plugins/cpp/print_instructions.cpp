@@ -18,9 +18,10 @@ public:
                              translation_block*) override
     {
         std::cerr << "-----------------------------------\n";
-        if (!b.symbol().name().empty())
-            std::cerr << "from symbol '" << b.symbol().name() << "' in file '"
-                      << b.symbol().file().path() << "'\n";
+        if (!b.current_symbol()->name().empty())
+            std::cerr << "from symbol '" << b.current_symbol()->name()
+                      << "' in file '" << b.current_symbol()->file().path()
+                      << "'\n";
         std::cerr << "block enter "
                   << "0x" << std::hex << b.pc() << std::dec << '\n';
         std::cerr << "block has " << b.instructions().size()

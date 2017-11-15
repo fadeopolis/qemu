@@ -111,15 +111,15 @@ class instruction
 public:
     using capstone_inst_ptr = std::unique_ptr<cs_insn, void (*)(cs_insn*)>;
 
-    instruction(uint64_t id, class symbol& symbol,
-                capstone_inst_ptr capstone_inst, const source_line* line)
-        : id_(id), symbol_(&symbol), capstone_inst_(std::move(capstone_inst)),
-          line_(line)
+    instruction(uint64_t id, capstone_inst_ptr capstone_inst,
+                const source_line* line)
+        : id_(id), current_symbol_(nullptr),
+          capstone_inst_(std::move(capstone_inst)), line_(line)
     {
     }
 
     uint64_t id() const { return id_; }
-    class symbol& symbol() const { return *symbol_; }
+    symbol* current_symbol() const { return current_symbol_; }
     uint64_t pc() const { return capstone_inst().address; }
     const std::string str() const
     {
@@ -129,14 +129,15 @@ public:
     size_t size() const { return capstone_inst().size; }
     const cs_insn& capstone_inst() const { return *capstone_inst_; }
     const source_line* line() const { return line_; }
-    void set_symbol(class symbol& symbol) { symbol_ = &symbol; }
+    void set_current_symbol(symbol& symbol) { current_symbol_ = &symbol; }
 
     static csh get_capstone_handle();
     // allocate a new capstone instruction
     static capstone_inst_ptr get_new_capstone_instruction();
+
 private:
     uint64_t id_;
-    class symbol* symbol_;
+    symbol* current_symbol_;
     capstone_inst_ptr capstone_inst_;
     const source_line* line_;
 };
@@ -157,24 +158,29 @@ public:
         RETURN      /* return from call */
     };
 
-    translation_block(uint64_t id, uint64_t pc, size_t size, symbol& symbol)
-        : id_(id), pc_(pc), size_(size), symbol_(&symbol)
+    translation_block(uint64_t id, uint64_t pc, size_t size)
+        : id_(id), pc_(pc), size_(size), current_symbol_(nullptr)
     {
     }
 
     uint64_t id() const { return id_; }
     uint64_t pc() const { return pc_; }
     size_t size() const { return size_; }
-    class symbol& symbol() const { return *symbol_; }
+    symbol* current_symbol() const { return current_symbol_; }
+    const std::unordered_set<symbol*>& symbols() const { return symbols_; }
     const std::vector<instruction*>& instructions() const
     {
         return instructions_;
     }
-    void set_symbol(class symbol& symbol)
+    void set_current_symbol(symbol& symbol)
     {
-        symbol_ = &symbol;
+        if (current_symbol_ == &symbol)
+            return;
+
+        current_symbol_ = &symbol;
+        symbols_.emplace(current_symbol_);
         for (instruction* i : instructions_) {
-            i->set_symbol(symbol);
+            i->set_current_symbol(symbol);
         }
     }
 
@@ -184,7 +190,8 @@ private:
     uint64_t id_;
     uint64_t pc_;
     size_t size_;
-    class symbol* symbol_;
+    symbol* current_symbol_;
+    std::unordered_set<symbol*> symbols_;
     std::vector<instruction*> instructions_;
 };
 
@@ -227,8 +234,7 @@ public:
 protected:
     // get or create an instruction
     static instruction&
-    get_instruction(uint64_t pc, symbol& sym,
-                    instruction::capstone_inst_ptr capstone_inst);
+    get_instruction(uint64_t pc, instruction::capstone_inst_ptr capstone_inst);
     /* return current call_stack. Current instruction is not included,
      * only all callers that lead to current stack */
     static call_stack get_call_stack();

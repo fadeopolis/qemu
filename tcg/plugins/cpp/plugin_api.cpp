@@ -145,7 +145,7 @@ private:
             if (expected_pc == current_pc) /* this is a function return */
             {
                 caller = it->tb();
-                current_symbol_start_pc_ = caller->symbol().pc();
+                current_symbol_start_pc_ = caller->current_symbol()->pc();
                 call_stack_.erase(it, call_stack_.end());
                 return tt::RETURN;
             }
@@ -200,8 +200,7 @@ public:
         }
 
         binary_file& file = get_binary_file(binary_file_path);
-        symbol& s =
-            get_symbol(symbol_name, symbol_pc, symbol_size, symbol_code, file);
+        files_mapping_[pc] = &file;
 
         uint64_t new_id = block_id_;
         ++block_id_;
@@ -210,17 +209,25 @@ public:
             blocks_
                 .emplace(std::piecewise_construct,
                          std::forward_as_tuple(new_id),
-                         std::forward_as_tuple(new_id, pc, size, s))
+                         std::forward_as_tuple(new_id, pc, size))
                 .first->second;
+
         blocks_mapping_.emplace(pc, &b);
         // add instructions for block
         disassemble_block(b, pc, code, size);
+
+        if (symbol_pc != 0) /* symbol is known */
+        {
+            symbol& s = get_symbol(symbol_name, symbol_pc, symbol_size,
+                                   symbol_code, file);
+            b.set_current_symbol(s);
+        }
 
         return b;
     }
 
     // get or create an instruction
-    instruction& get_instruction(uint64_t pc, symbol& sym,
+    instruction& get_instruction(uint64_t pc,
                                  instruction::capstone_inst_ptr capstone_inst)
     {
         auto it = instructions_mapping_.find(pc);
@@ -233,10 +240,10 @@ public:
 
         instruction& inst =
             instructions_
-                .emplace(
-                    std::piecewise_construct, std::forward_as_tuple(new_id),
-                    std::forward_as_tuple(new_id, sym, std::move(capstone_inst),
-                                          pc_to_lines_[pc]))
+                .emplace(std::piecewise_construct,
+                         std::forward_as_tuple(new_id),
+                         std::forward_as_tuple(new_id, std::move(capstone_inst),
+                                               pc_to_lines_[pc]))
                 .first->second;
         instructions_mapping_.emplace(pc, &inst);
         return inst;
@@ -284,10 +291,12 @@ public:
 
         /* correct symbol by using call stack */
         uint64_t current_symbol_pc = bc_recorder.get_current_symbol_pc();
-        if (b.symbol().pc() != current_symbol_pc) {
-            symbol& s = get_symbol("", current_symbol_pc, 0, nullptr,
-                                   b.symbol().file());
-            b.set_symbol(s);
+        if (!b.current_symbol() ||
+            b.current_symbol()->pc() != current_symbol_pc) // correct symbol
+        {
+            binary_file& file = *files_mapping_[current_symbol_pc];
+            symbol& s = get_symbol("", current_symbol_pc, 0, nullptr, file);
+            b.set_current_symbol(s);
         }
 
         /* block transition */
@@ -318,6 +327,7 @@ public:
     }
 
     void set_out(FILE* out) { out_ = out; }
+
 private:
     plugin_manager() {}
 
@@ -381,7 +391,7 @@ private:
         while (cs_disasm_iter(handle, &code, &size, &pc, insn.get())) {
             uint64_t i_pc = insn->address;
             instruction& inst =
-                get_instruction(i_pc, b.symbol(), std::move(insn));
+                get_instruction(i_pc, std::move(insn));
             b.add_instruction(inst);
             insn = instruction::get_new_capstone_instruction();
         }
@@ -541,6 +551,7 @@ private:
     std::unordered_map<uint64_t /* pc */, instruction*> instructions_mapping_;
     std::unordered_map<uint64_t /* pc */, translation_block*> blocks_mapping_;
     std::unordered_map<uint64_t /* pc */, symbol*> symbols_mapping_;
+    std::unordered_map<uint64_t /* pc */, binary_file*> files_mapping_;
 
     std::unordered_map<std::string /* name */, binary_file> binary_files_;
     std::unordered_map<std::string /* path */, source_file> source_files_;
@@ -561,11 +572,10 @@ instruction::capstone_inst_ptr instruction::get_new_capstone_instruction()
 }
 
 instruction&
-plugin::get_instruction(uint64_t pc, symbol& sym,
+plugin::get_instruction(uint64_t pc,
                         instruction::capstone_inst_ptr capstone_inst)
 {
-    return plugin_manager::get().get_instruction(pc, sym,
-                                                 std::move(capstone_inst));
+    return plugin_manager::get().get_instruction(pc, std::move(capstone_inst));
 }
 
 call_stack plugin::get_call_stack()

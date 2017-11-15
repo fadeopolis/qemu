@@ -47,8 +47,8 @@ private:
         sym_call_stack res;
         res.reserve(cs.size());
         for (const instruction* i : cs) {
-            const symbol& s = i->symbol();
-            res.emplace_back(&s);
+            const symbol* s = i->current_symbol();
+            res.emplace_back(s);
         }
         return res;
     }

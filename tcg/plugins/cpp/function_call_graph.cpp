@@ -32,7 +32,8 @@ public:
     uint64_t id() const { return id_; }
     uint64_t pc() const { return tb_.pc(); }
     size_t size() const { return size_; }
-    class symbol& symbol() const { return tb_.symbol(); }
+    symbol& current_symbol() const { return *tb_.current_symbol(); }
+    const std::unordered_set<symbol*>& symbols() const { return tb_.symbols(); }
     const std::vector<basic_block*>& successors() const { return successors_; }
     bb_type type() const { return type_; }
     basic_block* loop_header() const { return loop_header_; }
@@ -340,6 +341,12 @@ static json json_one_block(const basic_block& bb)
     for (auto* s : src)
         j_src.emplace_back(json_one_source_line(s, true));
 
+    json j_syms = json::array();
+    auto symbols = get_vec_from_unordered_set(bb.symbols());
+    sort_vec_elem_with_id(symbols);
+    for (auto* s : symbols)
+        j_syms.emplace_back(s->id());
+
     json loop_header;
     if (bb.loop_header())
         loop_header = bb.loop_header()->id();
@@ -347,7 +354,7 @@ static json json_one_block(const basic_block& bb)
     json j = {{"id", bb.id()},
               {"pc", bb.pc()},
               {"size", bb.size()},
-              {"symbol", bb.symbol().id()},
+              {"symbols", j_syms},
               {"instructions", j_inst},
               {"successors", j_succ},
               {"loop_header", loop_header},
@@ -459,7 +466,7 @@ private:
 
     void set_as_entry_point(translation_block& b)
     {
-        symbol& sym = b.symbol();
+        symbol& sym = *b.current_symbol();
         basic_block& bb = get_basic_block(b);
         entry_points_[&sym] = &bb;
     }
@@ -470,7 +477,7 @@ private:
         basic_block& next_bb_start = get_basic_block(next);
         bool new_trans = prev_bb_end.chain_block(next_bb_start);
         if (new_trans)
-            identify_loops(entry_points_[&previous.symbol()]);
+            identify_loops(entry_points_[previous.current_symbol()]);
     }
 
     void set_block_type(translation_block& b, basic_block::bb_type type)
@@ -606,7 +613,7 @@ private:
                     cs_disasm_iter(handle, &code, &size, &pc, cs_inst.get())) {
                     uint64_t i_pc = cs_inst->address;
                     instruction& i =
-                        plugin::get_instruction(i_pc, s, std::move(cs_inst));
+                        plugin::get_instruction(i_pc, std::move(cs_inst));
                     instructions.emplace_back(&i);
                     cs_inst = instruction::get_new_capstone_instruction();
                 }
@@ -636,13 +643,15 @@ private:
             symbols_successors;
 
         for (auto* b : blocks) {
-            symbol* b_sym = &b->symbol();
-            symbols_to_blocks[b_sym].emplace(b);
-            for (auto* succ : b->successors()) {
-                symbol* succ_sym = &succ->symbol();
-                if (b_sym == succ_sym)
-                    continue;
-                symbols_successors[b_sym].emplace(succ_sym);
+            for (symbol* b_sym : b->symbols()) {
+                symbols_to_blocks[b_sym].emplace(b);
+                for (auto* succ : b->successors()) {
+                    for (symbol* succ_sym : succ->symbols()) {
+                        if (b_sym == succ_sym)
+                            continue;
+                        symbols_successors[b_sym].emplace(succ_sym);
+                    }
+                }
             }
             for (auto* i : b->instructions())
                 covered_instructions.emplace(i);
