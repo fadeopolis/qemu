@@ -16,7 +16,7 @@
     <tr>
         <td>{{s.file}}</td>
         <td>{{s.line}}</td>
-        <td>{{s.src}}</td>
+        <td><pre>{{s.src}}</pre></td>
         <td>{{s.executed}}</td>
     </tr>
     {% endfor %}
@@ -32,7 +32,7 @@
     {% for a in assembly %}
     <tr>
         <td>{{a.pc}}</td>
-        <td>{{a.asm}}</td>
+        <td><pre>{{a.asm}}</pre></td>
         <td>{{a.executed}}</td>
     </tr>
     {% endfor %}
