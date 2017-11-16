@@ -55,6 +55,28 @@ def load_json(input_json):
     return data
 
 
+def get_symbol_src_start(s):
+    # first block has the lowest id, which matches the first time block
+    # was created, thus the entry block of function
+    first_instr = s['basic_blocks'][0]['instructions'][0]
+    src = ''
+    src_node = first_instr['src']
+    if src_node:
+        src = src_node['file'] + ':' + str(src_node['line'])
+    return src
+
+
+def get_symbol_name(s):
+    name = s['name']
+    if not name:
+        name = hex(s['pc'])
+    return name
+
+
+def get_symbol_url(s):
+    return symbol_file_prefix + str(s['id']) + '.html'
+
+
 def generate_index(symbols, original_json_input, output_dir, output_file,
                    j2env, template_file):
     output_dot_file_name = output_file + '.dot.txt'
@@ -67,20 +89,12 @@ def generate_index(symbols, original_json_input, output_dir, output_file,
     # create list of symbols and dot graph
     for s in sorted(symbols, key=lambda x: x['pc']):
         id = s['id']
-        sym_url = symbol_file_prefix + str(id) + '.html'
-        name = s['name']
-        if not name:
-            name = ''
+        sym_url = get_symbol_url(s)
+        name = get_symbol_name(s)
         pc = hex(s['pc'])
         size = s['size']
 
-        # first block has the lowest id, which matches the first time block
-        # was created, thus the entry block of function
-        first_instr = s['basic_blocks'][0]['instructions'][0]
-        src = ''
-        src_node = first_instr['src']
-        if src_node:
-            src = src_node['file'] + ':' + str(src_node['line'])
+        src = get_symbol_src_start(s)
 
         binary = s['file']
         if not binary:
@@ -181,12 +195,28 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
         if len(b['symbols']) > 1:
             b_label += '\n_______________________'
             for s in b['symbols']:
-                name = s['name']
-                if not name:
-                    name = hex(s['pc'])
+                name = get_symbol_name(s)
                 b_label += '\nSHARED BLOCK ' + name
 
         dot.node(str(id), label=b_label)
+
+    name = get_symbol_name(sym)
+    pc = hex(sym['pc'])
+    orig_file = sym['file']
+    src = get_symbol_src_start(sym)
+    size = sym['size']
+
+    def list_builder(syms):
+        res = []
+        for s in syms:
+            data = dict()
+            data['name'] = get_symbol_name(s)
+            data['url'] = get_symbol_url(s)
+            res.append(data)
+        return res
+
+    successors = list_builder(sym['successors'])
+    predecessors = list_builder(sym['predecessors'])
 
     log().info('generate symbol file %s', output_file)
     out = j2env.get_template(template_file).render(
@@ -194,6 +224,13 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
         dot_file=output_dot_file_name,
         svg_file=output_dot_file_name + '.svg',
         index_file=index_file,
+        sym_name=name,
+        sym_pc=pc,
+        sym_size=size,
+        sym_file=orig_file,
+        sym_src=src,
+        sym_successors=successors,
+        sym_predecessors=predecessors,
         sources=sources,
         assembly=assembly)
     with open(output_file, 'w') as f:
@@ -212,9 +249,7 @@ def generate_files(input_json, output_dir):
     log().info('read templates from %s', template_dir())
     j2env = get_jinja_env(template_dir())
 
-    js_jquery = 'jquery-3.2.1.min.js'
-    shutil.copyfile(
-        os.path.join(js_dir(), js_jquery), os.path.join(output_dir, js_jquery))
+    shutil.copytree(js_dir(), os.path.join(output_dir, 'js'))
     shutil.copyfile(input_json, os.path.join(output_dir, 'data.json'))
     output_index = 'index.html'
 
@@ -236,13 +271,19 @@ def generate_files(input_json, output_dir):
         s['basic_blocks'] = [
             blocks_dict[block_id] for block_id in s['basic_blocks']
         ]
-        if s['entry_point']:
-            s['entry_point'] = blocks_dict[s['entry_point']]
     for b in j['basic_blocks']:
         b['successors'] = [blocks_dict[succ_id] for succ_id in b['successors']]
         if b['loop_header']:
             b['loop_header'] = blocks_dict[b['loop_header']]
         b['symbols'] = [symbols_dict[sym_id] for sym_id in b['symbols']]
+
+    # compute predecessors
+    for s in j['symbols']:
+        s.update({'predecessors': []})
+
+    for s in j['symbols']:
+        for succ in s['successors']:
+            succ['predecessors'].append(s)
 
     generate_index(j['symbols'], 'data.json', output_dir, output_index, j2env,
                    'index.html')

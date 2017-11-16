@@ -2,7 +2,36 @@
 <a href="{{ index_file }}">Go back to index</a>
 <a href="{{ dot_file }}">dot source</a>
 <a href="{{ svg_file }}">svg source</a>
+
+<hr/>
+
+<p>name: {{sym_name}}</p>
+<p>pc: {{sym_pc}}</p>
+<p>size: {{sym_size}}</p>
+<p>file: {{sym_file}}</p>
+<p>src: {{sym_src}}</p>
+<p>
+predecessors:
+<ul>
+    {% for s in sym_predecessors %}
+    <li><a href="{{s.url}}">{{s.name}}</a></li>
+    {% endfor %}
+</ul>
+</p>
+<p>
+successors:
+<ul>
+    {% for s in sym_successors %}
+    <li><a href="{{s.url}}">{{s.name}}</a></li>
+    {% endfor %}
+</ul>
+</p>
+
+<hr/>
+
 <div id="svg_file"></div>
+
+<hr/>
 
 <p>Source</p>
 <table>
@@ -17,10 +46,12 @@
         <td>{{s.file}}</td>
         <td>{{s.line}}</td>
         <td><pre>{{s.src}}</pre></td>
-        <td>{{s.executed}}</td>
+            <td>{{s.executed}}</td>
     </tr>
     {% endfor %}
 </table>
+
+<hr/>
 
 <p>Assembly</p>
 <table>
@@ -33,7 +64,7 @@
     <tr>
         <td>{{a.pc}}</td>
         <td><pre>{{a.asm}}</pre></td>
-        <td>{{a.executed}}</td>
+            <td>{{a.executed}}</td>
     </tr>
     {% endfor %}
 </table>

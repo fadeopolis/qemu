@@ -364,7 +364,7 @@ static json json_one_block(const basic_block& bb)
 
 static json json_one_symbol(
     const symbol& s, std::vector<basic_block*>& sym_blocks,
-    const std::vector<instruction*>& instructions, basic_block* entry_point,
+    const std::vector<instruction*>& instructions,
     const std::unordered_set<symbol*>& successors,
     const std::unordered_set<const source_line*>& covered_source_lines,
     const std::unordered_set<instruction*>& covered_instructions)
@@ -374,10 +374,6 @@ static json json_one_symbol(
         j_instructions.emplace_back(
             json_one_instruction(*i, covered_instructions.count(i) != 0));
     }
-
-    json j_entry_point;
-    if (entry_point)
-        j_entry_point = entry_point->id();
 
     sort_vec_elem_with_id(sym_blocks);
     json j_blocks = json::array();
@@ -415,7 +411,6 @@ static json json_one_symbol(
               {"instructions", j_instructions},
               {"basic_blocks", j_blocks},
               {"successors", j_succ},
-              {"entry_point", j_entry_point},
               {"src", j_src}};
     return j;
 }
@@ -598,8 +593,6 @@ private:
             std::vector<basic_block*> sym_blocks =
                 get_vec_from_unordered_set(symbols_to_blocks[&s]);
 
-            basic_block* entry_point = entry_points_[&s];
-
             std::vector<instruction*> instructions;
             if (s.size() != 0) // disassemble whole symbol
             {
@@ -622,7 +615,7 @@ private:
             std::unordered_set<symbol*> successors = symbols_successors[&s];
 
             j.emplace_back(json_one_symbol(
-                s, sym_blocks, instructions, entry_point, successors,
+                s, sym_blocks, instructions, successors,
                 covered_source_lines, covered_instructions));
         }
 
