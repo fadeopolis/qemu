@@ -9,11 +9,6 @@
 /* defined in linux-user/qemu.h */
 extern const char* get_mapped_file(uint64_t addr);
 
-static void on_block_exec(translation_block** b_ptr)
-{
-    event_block_executed(*b_ptr);
-}
-
 /* used to retrieve tb information before and after its generation */
 static translation_block** current_block_ptr;
 static TCGPluginInterface* plugin_tpi;
@@ -30,6 +25,7 @@ static uint64_t get_correct_pc(uint64_t pc)
     return pc - pc_offset;
 }
 
+/* code architecture dependent */
 #if defined(TARGET_X86_64)
 /* on x86_64, return address in on the top of stack after a call is done */
 uint64_t get_callee_return_address(void)
@@ -38,9 +34,19 @@ uint64_t get_callee_return_address(void)
     uint64_t stack_ptr = cpu_env->regs[R_ESP];
     return get_correct_pc(tpi_guest_load64(plugin_tpi, stack_ptr));
 }
+
+enum architecture get_guest_architecture(void)
+{
+    return ARCHITECTURE_X86_64;
+}
 #else
-#error "get_callee_return_address not implemented for current architecture"
+#error "some functions are not implemented for current architecture"
 #endif
+
+static void on_block_exec(translation_block** b_ptr)
+{
+    event_block_executed(*b_ptr);
+}
 
 static void before_gen_tb(const TCGPluginInterface* tpi)
 {

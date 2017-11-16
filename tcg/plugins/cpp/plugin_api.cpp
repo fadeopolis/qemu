@@ -37,7 +37,17 @@ public:
 private:
     capstone()
     {
-        if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle_) != CS_ERR_OK) {
+        cs_arch arch;
+        cs_mode mode;
+
+        switch (get_guest_architecture()) {
+        case architecture::ARCHITECTURE_X86_64:
+            arch = CS_ARCH_X86;
+            mode = CS_MODE_64;
+            break;
+        }
+
+        if (cs_open(arch, mode, &handle_) != CS_ERR_OK) {
             fprintf(stderr, "FATAL: error opening capstone library\n");
             exit(EXIT_FAILURE);
         }
@@ -390,8 +400,7 @@ private:
         csh handle = capstone::get().handle();
         while (cs_disasm_iter(handle, &code, &size, &pc, insn.get())) {
             uint64_t i_pc = insn->address;
-            instruction& inst =
-                get_instruction(i_pc, std::move(insn));
+            instruction& inst = get_instruction(i_pc, std::move(insn));
             b.add_instruction(inst);
             insn = instruction::get_new_capstone_instruction();
         }

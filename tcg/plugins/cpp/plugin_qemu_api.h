@@ -14,6 +14,8 @@ class translation_block;
 typedef struct translation_block translation_block;
 #endif
 
+/* following functions must be used by QEMU plugin */
+
 /* initialize or close plugin */
 /* @out is stream for plugin output */
 void plugin_init(FILE* out);
@@ -35,9 +37,19 @@ void event_block_executed(translation_block* b);
 /* cpus are stopped (end of program) */
 void event_cpus_stopped(void);
 
+/* following functions must be implemented by QEMU plugin */
+
 /* return pc where current function will return to for current thread of
  * execution */
 uint64_t get_callee_return_address(void);
+
+enum architecture
+{
+    ARCHITECTURE_X86_64
+};
+
+/* return architecture for current guest */
+enum architecture get_guest_architecture(void);
 
 #ifdef __cplusplus
 }
