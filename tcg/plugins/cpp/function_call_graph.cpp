@@ -13,7 +13,8 @@ using json = nlohmann::json;
 
 /* as opposed to translation_block, basic_block offers guarantee that
  * any of its instructions are not in another basic_block (single entry/exit
- * point) */
+ * point). Since a basic_block exists for each beginning of a translation_block,
+ * a lot of things are retrieved from it (id, symbols, ...). */
 class basic_block
 {
 public:
@@ -24,12 +25,12 @@ public:
         OTHER,     /* jump or sequential execution */
     };
 
-    basic_block(uint64_t id, translation_block& tb)
-        : id_(id), tb_(tb), size_(tb_.size())
+    basic_block(translation_block& tb)
+        : tb_(tb), size_(tb_.size())
     {
     }
 
-    uint64_t id() const { return id_; }
+    uint64_t id() const { return tb_.id(); }
     uint64_t pc() const { return tb_.pc(); }
     size_t size() const { return size_; }
     symbol& current_symbol() const { return *tb_.current_symbol(); }
@@ -55,12 +56,13 @@ public:
     void split_block(basic_block& new_bb)
     {
         basic_block& orig_bb = *this;
-        orig_bb.size_ -= new_bb.size();
+        orig_bb.size_ = new_bb.pc() - orig_bb.pc();
 
         // report block chain
-        new_bb.successors_ = orig_bb.successors_;
+        for (auto* s: orig_bb.successors())
+            new_bb.chain_block(*s);
         orig_bb.successors_.clear();
-        // chain new block to orig one
+        // chain new block to orig one only
         orig_bb.chain_block(new_bb);
 
         new_bb.loop_header_ = orig_bb.loop_header_;
@@ -518,22 +520,13 @@ private:
                 return *previous_bb;
         }
 
-        uint64_t new_id = basic_block_id_;
-        ++basic_block_id_;
-
         // create a new basic block from scratch
         basic_block& new_bb = blocks_
                                   .emplace(std::piecewise_construct,
-                                           std::forward_as_tuple(new_id),
-                                           std::forward_as_tuple(new_id, tb))
+                                           std::forward_as_tuple(tb.id()),
+                                           std::forward_as_tuple(tb))
                                   .first->second;
-        if (previous_bb) { // jump in the middle of a block that already
-                           // exists
-            // split existing basic block
-            previous_bb->split_block(new_bb);
-        }
-
-        // add mapping for new_bb
+        // add mapping for new_bb, may split it
         for (uint64_t pc_it = new_bb.pc(); pc_it != new_bb.pc() + new_bb.size();
              ++pc_it) {
             basic_block*& mapped = blocks_map_[pc_it];
@@ -544,6 +537,14 @@ private:
                 break;
             }
         }
+
+        if (previous_bb) { 
+            // jump in the middle of a block that already exists, split it now
+            // potential split of new_bb due to mapped block must be made before
+            // this one, to ensure successors blocks are correct (we work from
+            // high to low addresses)
+            previous_bb->split_block(new_bb); }
+
         return new_bb;
     }
 
@@ -614,9 +615,9 @@ private:
 
             std::unordered_set<symbol*> successors = symbols_successors[&s];
 
-            j.emplace_back(json_one_symbol(
-                s, sym_blocks, instructions, successors,
-                covered_source_lines, covered_instructions));
+            j.emplace_back(json_one_symbol(s, sym_blocks, instructions,
+                                           successors, covered_source_lines,
+                                           covered_instructions));
         }
 
         return j;
@@ -661,7 +662,6 @@ private:
         std::cerr << j.dump(4, ' ');
     }
 
-    uint64_t basic_block_id_ = 0;
     std::unordered_map<uint64_t /* id */, basic_block> blocks_;
     std::unordered_map<uint64_t /* pc */, basic_block*> blocks_map_;
     std::unordered_map<symbol*, basic_block*> entry_points_;
