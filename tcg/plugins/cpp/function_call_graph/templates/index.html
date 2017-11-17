@@ -9,22 +9,26 @@
 
 <hr/>
 
-<table>
-    <tr>
-        <th>pc</th>
-        <th>name</th>
-        <th>size</th>
-        <th>binary file</th>
-        <th>source file</th>
-    </tr>
-    {% for s in symbols %}
-    <tr>
-        <td><a href="{{ s.url }}">{{s.pc}}</a></td>
-        <td>{{s.name}}</td>
-        <td>{{s.size}}</td>
-        <td>{{s.binary}}</td>
-        <td>{{s.src}}</td>
-    </tr>
-    {% endfor %}
+<table class="dyn_table">
+    <thead>
+        <tr>
+            <th>pc</th>
+            <th>name</th>
+            <th>size</th>
+            <th>binary file</th>
+            <th>source file</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in symbols %}
+        <tr>
+            <td><a href="{{ s.url }}">{{s.pc}}</a></td>
+            <td>{{s.name}}</td>
+            <td>{{s.size}}</td>
+            <td>{{s.binary}}</td>
+            <td>{{s.src}}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
 </table>
 {%include 'footer.html' %}

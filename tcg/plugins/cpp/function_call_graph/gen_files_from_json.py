@@ -21,8 +21,8 @@ def template_dir():
     return os.path.join(os.path.dirname(current_file_path()), 'templates')
 
 
-def js_dir():
-    return os.path.join(os.path.dirname(current_file_path()), 'js')
+def ext_dir():
+    return os.path.join(os.path.dirname(current_file_path()), 'ext')
 
 
 def get_jinja_env(template_dir):
@@ -249,7 +249,7 @@ def generate_files(input_json, output_dir):
     log().info('read templates from %s', template_dir())
     j2env = get_jinja_env(template_dir())
 
-    shutil.copytree(js_dir(), os.path.join(output_dir, 'js'))
+    shutil.copytree(ext_dir(), os.path.join(output_dir, 'ext'))
     shutil.copyfile(input_json, os.path.join(output_dir, 'data.json'))
     output_index = 'index.html'
 
