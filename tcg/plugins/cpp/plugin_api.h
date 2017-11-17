@@ -146,6 +146,9 @@ private:
 // different from a basic block (no single entry point)
 // two translation_block may contains the same set of instructions (one of the
 // blocks overlaps on the other)
+// When a block is translated, it may not have a symbol yet.
+// When it is executed, symbol found from call stack is reported to be its
+// current one. Thus, you can always safely assume current_symbol is never NULL.
 class translation_block
 {
 public:

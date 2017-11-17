@@ -5,67 +5,73 @@
 
 <hr/>
 
-<p>name: {{sym_name}}</p>
-<p>pc: {{sym_pc}}</p>
-<p>size: {{sym_size}}</p>
-<p>file: {{sym_file}}</p>
-<p>src: {{sym_src}}</p>
-<p>
-predecessors:
-<ul>
-    {% for s in sym_predecessors %}
-    <li><a href="{{s.url}}">{{s.name}}</a></li>
-    {% endfor %}
-</ul>
-</p>
-<p>
-successors:
-<ul>
-    {% for s in sym_successors %}
-    <li><a href="{{s.url}}">{{s.name}}</a></li>
-    {% endfor %}
-</ul>
-</p>
+<div>
+    <div style="float:right;width:70%;" id="svg_div"></div>
+    <div style="float:left;width:30%;">
+        <p>name: {{sym_name}}</p>
+        <p>pc: {{sym_pc}}</p>
+        <p>size: {{sym_size}}</p>
+        <p>file: {{sym_file}}</p>
+        <p>src: {{sym_src}}</p>
+        <p>
+        predecessors:
+        <ul>
+            {% for s in sym_predecessors %}
+            <li><a href="{{s.url}}">{{s.name}}</a></li>
+            {% endfor %}
+        </ul>
+        </p>
+        <p>
+        successors:
+        <ul>
+            {% for s in sym_successors %}
+            <li><a href="{{s.url}}">{{s.name}}</a></li>
+            {% endfor %}
+        </ul>
+        </p>
+    </div>
+</div>
 
-<hr/>
+<div style="clear:both;"/>
+    <hr/>
 
-<div id="svg_file"></div>
+    <div style="float:right;width:48%;">
+        <p>Source</p>
+        <table>
+            <tr>
+                <th>File</th>
+                <th>Line</th>
+                <th>Src</th>
+                <th>Executed</th>
+            </tr>
+            {% for s in sources %}
+            <tr>
+                <td>{{s.file}}</td>
+                <td>{{s.line}}</td>
+                <td><pre>{{s.src}}</pre></td>
+                    <td>{{s.executed}}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
 
-<hr/>
+    <div style="float:left;width:48%;">
+        <p>Assembly</p>
+        <table>
+            <tr>
+                <th>Pc</th>
+                <th>Asm</th>
+                <th>Executed</th>
+            </tr>
+            {% for a in assembly %}
+            <tr>
+                <td>{{a.pc}}</td>
+                <td><pre>{{a.asm}}</pre></td>
+                    <td>{{a.executed}}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
 
-<p>Source</p>
-<table>
-    <tr>
-        <td>file</td>
-        <td>line</td>
-        <td>src</td>
-        <td>executed</td>
-    </tr>
-    {% for s in sources %}
-    <tr>
-        <td>{{s.file}}</td>
-        <td>{{s.line}}</td>
-        <td><pre>{{s.src}}</pre></td>
-            <td>{{s.executed}}</td>
-    </tr>
-    {% endfor %}
-</table>
-
-<hr/>
-
-<p>Assembly</p>
-<table>
-    <tr>
-        <td>pc</td>
-        <td>asm</td>
-        <td>executed</td>
-    </tr>
-    {% for a in assembly %}
-    <tr>
-        <td>{{a.pc}}</td>
-        <td><pre>{{a.asm}}</pre></td>
-            <td>{{a.executed}}</td>
-    </tr>
-    {% endfor %}
-</table>
-{%include 'footer.html' %}
+    <div style="clear:both;"/>
+        {%include 'footer.html' %}
