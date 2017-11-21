@@ -3,7 +3,7 @@
 #include "tcg-plugin.h"
 
 #ifdef CONFIG_TCG_PLUGIN_CPP
-#include "cpp/plugin_qemu_api.h"
+#include "cpp/plugin_instrumentation_api.h"
 #include "disas/disas.h"
 
 /* defined in linux-user/qemu.h */
@@ -28,14 +28,14 @@ static uint64_t get_correct_pc(uint64_t pc)
 /* code architecture dependent */
 #if defined(TARGET_X86_64)
 /* on x86_64, return address in on the top of stack after a call is done */
-uint64_t get_callee_return_address(void)
+static uint64_t get_callee_return_address(void)
 {
     const CPUArchState* cpu_env = tpi_current_cpu_arch(plugin_tpi);
     uint64_t stack_ptr = cpu_env->regs[R_ESP];
     return get_correct_pc(tpi_guest_load64(plugin_tpi, stack_ptr));
 }
 
-enum architecture get_guest_architecture(void)
+static enum architecture get_guest_architecture(void)
 {
     return ARCHITECTURE_X86_64;
 }
@@ -45,7 +45,7 @@ enum architecture get_guest_architecture(void)
 
 static void on_block_exec(translation_block** b_ptr)
 {
-    event_block_executed(*b_ptr);
+    event_block_executed(*b_ptr, get_callee_return_address());
 }
 
 static void before_gen_tb(const TCGPluginInterface* tpi)
@@ -109,7 +109,7 @@ void tpi_init(TCGPluginInterface* tpi)
     tpi->cpus_stopped = cpus_stopped;
     plugin_tpi = tpi;
 
-    plugin_init(tpi->output);
+    plugin_init(tpi->output, get_guest_architecture());
 }
 
 #else

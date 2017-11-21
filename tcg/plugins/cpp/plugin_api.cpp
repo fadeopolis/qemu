@@ -1,4 +1,4 @@
-#include "plugin_qemu_api.h"
+#include "plugin_instrumentation_api.h"
 
 #include "plugin_api.h"
 
@@ -34,16 +34,25 @@ public:
         return c;
     }
 
+    static void set_guest_architecture(enum architecture arch)
+    {
+        guest_architecture = arch;
+    }
+
 private:
     capstone()
     {
         cs_arch arch;
         cs_mode mode;
 
-        switch (get_guest_architecture()) {
+        switch (guest_architecture) {
         case architecture::ARCHITECTURE_X86_64:
             arch = CS_ARCH_X86;
             mode = CS_MODE_64;
+            break;
+        case architecture::ARCHITECTURE_UNKNOWN:
+            fprintf(stderr, "FATAL: capstone architecture was not set\n");
+            exit(EXIT_FAILURE);
             break;
         }
 
@@ -58,7 +67,11 @@ private:
     ~capstone() { cs_close(&handle_); }
 
     csh handle_;
+    static enum architecture guest_architecture;
 };
+
+enum architecture capstone::guest_architecture =
+    architecture::ARCHITECTURE_UNKNOWN;
 
 // split a string @str in token delimited by @delim
 static std::vector<std::string> split_string(const std::string& str, char delim)
@@ -104,12 +117,14 @@ public:
     block_chain_recorder() { call_stack_.reserve(1000); }
 
     translation_block::block_transition_type
-    on_block_exec(translation_block& b, translation_block*& caller)
+    on_block_exec(translation_block& b, translation_block*& caller,
+                  uint64_t potential_callee_return_address)
     {
         last_executed_block_ = current_block_;
         current_block_ = &b;
 
-        return track_stack(b, last_executed_block_, caller);
+        return track_stack(b, last_executed_block_, caller,
+                           potential_callee_return_address);
     }
 
     translation_block* get_last_block_executed() const
@@ -132,7 +147,8 @@ public:
 private:
     translation_block::block_transition_type
     track_stack(translation_block& b, translation_block* last_executed_block,
-                translation_block*& caller)
+                translation_block*& caller,
+                uint64_t potential_callee_return_address)
     {
         uint64_t current_pc = b.pc();
 
@@ -161,7 +177,7 @@ private:
             }
         }
 
-        uint64_t return_address = get_callee_return_address();
+        uint64_t return_address = potential_callee_return_address;
 
         if (return_address != expected_block_pc) {
             /* this is a simple jump */
@@ -289,7 +305,8 @@ public:
         return bc_recorders_[std::this_thread::get_id()];
     }
 
-    void event_block_executed(translation_block& b)
+    void event_block_executed(translation_block& b,
+                              uint64_t potential_callee_return_address)
     {
         std::lock_guard<std::mutex> mt_lock(mt_mutex_);
 
@@ -297,7 +314,8 @@ public:
         /* maintain call stack and detect call/ret */
         block_chain_recorder& bc_recorder = get_current_thread_bc();
         translation_block::block_transition_type transition_type =
-            bc_recorder.on_block_exec(b, caller);
+            bc_recorder.on_block_exec(b, caller,
+                                      potential_callee_return_address);
 
         /* correct symbol by using call stack */
         uint64_t current_symbol_pc = bc_recorder.get_current_symbol_pc();
@@ -594,9 +612,10 @@ call_stack plugin::get_call_stack()
 
 const std::string plugin_manager::env_var_plugins_name_ = "TCG_PLUGIN_CPP";
 
-void plugin_init(FILE* out)
+void plugin_init(FILE* out, enum architecture arch)
 {
     plugin_manager::get().set_out(out);
+    capstone::set_guest_architecture(arch);
     plugin_manager::get().event_program_start();
 }
 
@@ -616,9 +635,11 @@ translation_block* get_translation_block(uint64_t pc, const uint8_t* code,
     return &b;
 }
 
-void event_block_executed(translation_block* b)
+void event_block_executed(translation_block* b,
+                          uint64_t potential_callee_return_address)
 {
-    plugin_manager::get().event_block_executed(*b);
+    plugin_manager::get().event_block_executed(*b,
+                                               potential_callee_return_address);
 }
 
 void event_cpus_stopped(void)
