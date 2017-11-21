@@ -249,7 +249,10 @@ def generate_files(input_json, output_dir):
     log().info('read templates from %s', template_dir())
     j2env = get_jinja_env(template_dir())
 
-    shutil.copytree(ext_dir(), os.path.join(output_dir, 'ext'))
+    out_ext_dir = os.path.join(output_dir, 'ext')
+    if os.path.exists(out_ext_dir):
+        shutil.rmtree(out_ext_dir)
+    shutil.copytree(ext_dir(), out_ext_dir)
     shutil.copyfile(input_json, os.path.join(output_dir, 'data.json'))
     output_index = 'index.html'
 
