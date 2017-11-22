@@ -595,7 +595,7 @@ private:
                 get_vec_from_unordered_set(symbols_to_blocks[&s]);
 
             std::vector<instruction*> instructions;
-            if (s.size() != 0) // disassemble whole symbol
+            if (s.size() != 0 && s.code()) // disassemble whole symbol
             {
                 csh handle = instruction::get_capstone_handle();
                 instruction::capstone_inst_ptr cs_inst =

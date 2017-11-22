@@ -172,7 +172,8 @@ count_instructions and print_instructions.
 Building support for CPP plugins requires:
 - c++14 compiler (g++-6 used)
 - capstone library
-- dwarf library (libdwarf-dev)
+- elfin library (libelfin-dev)
+  that contains: libdwarf++ and libelf++
 
 How to Write TCG Plugins?
 =========================

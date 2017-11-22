@@ -37,12 +37,15 @@ struct mapinfo {
 };
 struct mapinfo *mapinfos = NULL;
 
-const char* get_mapped_file(uint64_t addr)
+bool get_mapped_file(uint64_t addr, const char** name, uint64_t* base_addr)
 {
     for (struct mapinfo *it = mapinfos; it != NULL; it = it->next)
     {
         if (addr >= it->addr && addr < it->addr + it->length)
-            return it->filename;
+        {
+            *name = it->filename;
+            *base_addr = it->addr;
+        }
     }
     return NULL;
 }

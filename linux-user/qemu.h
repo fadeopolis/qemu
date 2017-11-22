@@ -439,8 +439,8 @@ extern abi_ulong mmap_next_start;
 abi_ulong mmap_find_vma(abi_ulong, abi_ulong);
 void mmap_fork_start(void);
 void mmap_fork_end(int child);
-/* return file mapped at address @addr, NULL if no mapping */
-const char* get_mapped_file(uint64_t addr);
+/* return file mapped at address @addr, its @name and @base_addr */
+bool get_mapped_file(uint64_t addr, const char** name, uint64_t* base_addr);
 
 /* main.c */
 extern unsigned long guest_stack_size;

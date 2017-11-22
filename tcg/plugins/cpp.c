@@ -4,26 +4,14 @@
 
 #ifdef CONFIG_TCG_PLUGIN_CPP
 #include "cpp/plugin_instrumentation_api.h"
-#include "disas/disas.h"
 
 /* defined in linux-user/qemu.h */
-extern const char* get_mapped_file(uint64_t addr);
+extern bool get_mapped_file(uint64_t addr, const char** name,
+                            uint64_t* base_addr);
 
 /* used to retrieve tb information before and after its generation */
 static translation_block** current_block_ptr;
 static TCGPluginInterface* plugin_tpi;
-
-/* pc during execution has an offset. pc used through plugin_api interface are
- * already corrected. If you read a pc directly (from memory for instance), you
- * need to correct it using following function. Has no effect if called on an
- * already corrected pc */
-static uint64_t get_correct_pc(uint64_t pc)
-{
-    uint64_t pc_offset = 0x4000000000;
-    if (pc < pc_offset)
-        return pc;
-    return pc - pc_offset;
-}
 
 /* code architecture dependent */
 #if defined(TARGET_X86_64)
@@ -32,7 +20,7 @@ static uint64_t get_callee_return_address(void)
 {
     const CPUArchState* cpu_env = tpi_current_cpu_arch(plugin_tpi);
     uint64_t stack_ptr = cpu_env->regs[R_ESP];
-    return get_correct_pc(tpi_guest_load64(plugin_tpi, stack_ptr));
+    return tpi_guest_load64(plugin_tpi, stack_ptr);
 }
 
 static enum architecture get_guest_architecture(void)
@@ -67,27 +55,13 @@ static void after_gen_tb(const TCGPluginInterface* tpi)
     uint64_t pc = tb->pc;
     const uint8_t* code = (const uint8_t*)tpi_guest_ptr(tpi, pc);
 
-    const char* symbol = "";
-    const char* file = "";
-    uint64_t symbol_pc = 0;
-    uint64_t symbol_size = 0;
-    const uint8_t* symbol_code = NULL;
-    if (lookup_symbol4(pc, &symbol, &file, &symbol_pc, &symbol_size)) {
-        symbol_code = (const uint8_t*)tpi_guest_ptr(tpi, symbol_pc);
-    } else { // symbol_pc equals to pc in this case with lookup_symbol
-        symbol_pc = 0;
-    }
-    /* get filename from list of mappings */
-    file = get_mapped_file(pc);
-    if (!file)
-        file = "";
+    const char* file = NULL;
+    uint64_t load_address = 0;
 
-    // magic offset to correct pc
-    pc = get_correct_pc(pc);
-    if (symbol_pc)
-        symbol_pc = get_correct_pc(symbol_pc);
-    translation_block* block = get_translation_block(
-        pc, code, tb->size, symbol, symbol_pc, symbol_size, symbol_code, file);
+    get_mapped_file(pc, &file, &load_address);
+
+    translation_block* block =
+        get_translation_block(pc, code, tb->size, file, load_address);
     /* patch current_block ptr */
     *current_block_ptr = block;
 }

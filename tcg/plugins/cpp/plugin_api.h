@@ -81,6 +81,8 @@ public:
     const uint8_t* code() const { return code_; }
     binary_file& file() const { return file_; }
 
+    void set_code(const uint8_t* code) { code_ = code; }
+
 private:
     uint64_t id_;
     std::string name_;
@@ -161,14 +163,16 @@ public:
         RETURN      /* return from call */
     };
 
-    translation_block(uint64_t id, uint64_t pc, size_t size)
-        : id_(id), pc_(pc), size_(size), current_symbol_(nullptr)
+    translation_block(uint64_t id, uint64_t pc, size_t size,
+                      const uint8_t* code)
+        : id_(id), pc_(pc), size_(size), code_(code), current_symbol_(nullptr)
     {
     }
 
     uint64_t id() const { return id_; }
     uint64_t pc() const { return pc_; }
     size_t size() const { return size_; }
+    const uint8_t* code() const { return code_; }
     symbol* current_symbol() const { return current_symbol_; }
     const std::unordered_set<symbol*>& symbols() const { return symbols_; }
     const std::vector<instruction*>& instructions() const
@@ -193,6 +197,7 @@ private:
     uint64_t id_;
     uint64_t pc_;
     size_t size_;
+    const uint8_t* code_;
     symbol* current_symbol_;
     std::unordered_set<symbol*> symbols_;
     std::vector<instruction*> instructions_;

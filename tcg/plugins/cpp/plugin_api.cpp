@@ -2,14 +2,15 @@
 
 #include "plugin_api.h"
 
-#include <libdwarf/dwarf.h>
-#include <libdwarf/libdwarf.h>
+#include <libelfin/dwarf/dwarf++.hh>
+#include <libelfin/elf/elf++.hh>
 
 #include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <map>
 #include <mutex>
 #include <set>
@@ -17,7 +18,6 @@
 #include <thread>
 #include <unistd.h>
 #include <unordered_map>
-#include <vector>
 
 // RAII object to use capstone
 class capstone
@@ -116,15 +116,24 @@ class block_chain_recorder
 public:
     block_chain_recorder() { call_stack_.reserve(1000); }
 
+    /* report execution of a block @b.
+     * If this is a call, we report it in @caller.
+     * @potential_callee_return_address is address where to return in callee. If
+     * it matches something we have on the stack, we will detect a call.
+     * @is_block_a_symbol_entry reports if a symbol exists for block pc. It
+     * allows to detect calls that are jmp (like in PLT for instance).
+     */
     translation_block::block_transition_type
     on_block_exec(translation_block& b, translation_block*& caller,
-                  uint64_t potential_callee_return_address)
+                  uint64_t potential_callee_return_address,
+                  bool is_block_a_symbol_entry)
     {
         last_executed_block_ = current_block_;
         current_block_ = &b;
 
         return track_stack(b, last_executed_block_, caller,
-                           potential_callee_return_address);
+                           potential_callee_return_address,
+                           is_block_a_symbol_entry);
     }
 
     translation_block* get_last_block_executed() const
@@ -142,20 +151,21 @@ public:
         return cs;
     }
 
-    uint64_t get_current_symbol_pc() { return current_symbol_start_pc_; }
+    uint64_t get_current_symbol_pc() { return current_symbol_pc_; }
 
 private:
     translation_block::block_transition_type
     track_stack(translation_block& b, translation_block* last_executed_block,
                 translation_block*& caller,
-                uint64_t potential_callee_return_address)
+                uint64_t potential_callee_return_address,
+                bool is_block_a_symbol_entry)
     {
         uint64_t current_pc = b.pc();
 
         using tt = translation_block::block_transition_type;
 
         if (!last_executed_block) { /* first time */
-            current_symbol_start_pc_ = current_pc;
+            current_symbol_pc_ = current_pc;
             return tt::START;
         }
 
@@ -165,13 +175,26 @@ private:
         if (expected_block_pc == current_pc) /* linear execution */
             return tt::SEQUENTIAL;
 
+        auto on_call = [&]() {
+            caller = last_executed_block;
+            current_symbol_pc_ = current_pc;
+            call_stack_.emplace_back(last_executed_block->instructions().back(),
+                                     expected_block_pc, last_executed_block);
+        };
+
+        if (is_block_a_symbol_entry) /* we have a call */
+        {
+            on_call();
+            return tt::CALL;
+        }
+
         /* check if we returned, walk the stack to find expected pc */
         for (auto it = call_stack_.end(); it != call_stack_.begin(); --it) {
             uint64_t expected_pc = it->expected_next_pc();
             if (expected_pc == current_pc) /* this is a function return */
             {
                 caller = it->tb();
-                current_symbol_start_pc_ = caller->current_symbol()->pc();
+                current_symbol_pc_ = caller->current_symbol()->pc();
                 call_stack_.erase(it, call_stack_.end());
                 return tt::RETURN;
             }
@@ -185,17 +208,14 @@ private:
         }
 
         /* this is a call, because return address was stored */
-        caller = last_executed_block;
-        current_symbol_start_pc_ = current_pc;
-        call_stack_.emplace_back(last_executed_block->instructions().back(),
-                                 expected_block_pc, last_executed_block);
+        on_call();
         return tt::CALL;
     }
 
     std::vector<call_stack_entry> call_stack_;
     translation_block* last_executed_block_ = nullptr;
     translation_block* current_block_ = nullptr;
-    uint64_t current_symbol_start_pc_ = 0;
+    uint64_t current_symbol_pc_ = 0;
 };
 
 // manager for plugins
@@ -214,9 +234,8 @@ public:
     // get or create a translation block
     translation_block&
     get_translation_block(uint64_t pc, const uint8_t* code, size_t size,
-                          const std::string& symbol_name, uint64_t symbol_pc,
-                          size_t symbol_size, const uint8_t* symbol_code,
-                          const std::string& binary_file_path)
+                          const std::string& binary_file_path,
+                          uint64_t binary_file_load_address)
     {
         std::lock_guard<std::mutex> mt_lock(mt_mutex_);
 
@@ -225,8 +244,9 @@ public:
             return *it->second;
         }
 
-        binary_file& file = get_binary_file(binary_file_path);
-        files_mapping_[pc] = &file;
+        binary_file& file =
+            get_binary_file(binary_file_path, binary_file_load_address);
+        binary_files_mapping_[pc] = &file;
 
         uint64_t new_id = block_id_;
         ++block_id_;
@@ -235,19 +255,12 @@ public:
             blocks_
                 .emplace(std::piecewise_construct,
                          std::forward_as_tuple(new_id),
-                         std::forward_as_tuple(new_id, pc, size))
+                         std::forward_as_tuple(new_id, pc, size, code))
                 .first->second;
 
         blocks_mapping_.emplace(pc, &b);
         // add instructions for block
         disassemble_block(b, pc, code, size);
-
-        if (symbol_pc != 0) /* symbol is known */
-        {
-            symbol& s = get_symbol(symbol_name, symbol_pc, symbol_size,
-                                   symbol_code, file);
-            b.set_current_symbol(s);
-        }
 
         return b;
     }
@@ -311,20 +324,32 @@ public:
         std::lock_guard<std::mutex> mt_lock(mt_mutex_);
 
         translation_block* caller = nullptr;
+        bool is_block_a_symbol_entry = false;
+        if (b.current_symbol())
+            is_block_a_symbol_entry = b.current_symbol()->pc() == b.pc();
+        else
+            is_block_a_symbol_entry = symbol_exists(b.pc());
+
         /* maintain call stack and detect call/ret */
         block_chain_recorder& bc_recorder = get_current_thread_bc();
         translation_block::block_transition_type transition_type =
             bc_recorder.on_block_exec(b, caller,
-                                      potential_callee_return_address);
+                                      potential_callee_return_address,
+                                      is_block_a_symbol_entry);
 
         /* correct symbol by using call stack */
         uint64_t current_symbol_pc = bc_recorder.get_current_symbol_pc();
         if (!b.current_symbol() ||
             b.current_symbol()->pc() != current_symbol_pc) // correct symbol
         {
-            binary_file& file = *files_mapping_[current_symbol_pc];
+            binary_file& file = *binary_files_mapping_[current_symbol_pc];
             symbol& s = get_symbol("", current_symbol_pc, 0, nullptr, file);
             b.set_current_symbol(s);
+        }
+
+        /* set symbol code if this block is the entry point */
+        if (b.current_symbol()->pc() == b.pc()) {
+            b.current_symbol()->set_code(b.code());
         }
 
         /* block transition */
@@ -360,20 +385,29 @@ private:
     plugin_manager() {}
 
     // get or create a binary file
-    binary_file& get_binary_file(const std::string& path)
+    binary_file& get_binary_file(const std::string& path, uint64_t load_address)
     {
         auto it = binary_files_.find(path);
         if (it != binary_files_.end()) {
             return it->second;
         }
 
+        binary_file& file = binary_files_.emplace(path, path).first->second;
+
         std::string error;
-        if (!path.empty() && !read_dwarf(path, error)) {
-            fprintf(stderr, "WARNING: error reading dwarf for file %s: %s\n",
-                    path.c_str(), error.c_str());
+        if (!path.empty()) {
+            if (!read_elf(file, load_address, error)) {
+                fprintf(stderr, "TCG_PLUGIN_CPP WARNING: error reading ELF for "
+                                "file %s: %s\n",
+                        path.c_str(), error.c_str());
+            } else if (!read_dwarf(path, load_address, error)) {
+                fprintf(stderr, "TCG_PLUGIN_CPP WARNING: error reading DWARF "
+                                "for file %s: %s\n",
+                        path.c_str(), error.c_str());
+            }
         }
 
-        return binary_files_.emplace(path, path).first->second;
+        return file;
     }
 
     // get or create a source file
@@ -384,6 +418,15 @@ private:
             return it->second;
         source_file& file = source_files_.emplace(path, path).first->second;
         return file;
+    }
+
+    // returns true if a symbol exists @pc
+    bool symbol_exists(uint64_t pc)
+    {
+        auto it = symbols_mapping_.find(pc);
+        if (it != symbols_mapping_.end())
+            return true;
+        return false;
     }
 
     // get or create a symbol (adds it to its file)
@@ -424,67 +467,23 @@ private:
         }
     }
 
-    /* read and record cu source files info */
-    bool read_debug_cu(Dwarf_Die cu, std::string& error)
+    void read_dwarf_table(const dwarf::line_table& lt, dwarf::taddr low_pc,
+                          dwarf::taddr high_pc, uint64_t load_address)
     {
-        Dwarf_Line* lines;
-        Dwarf_Signed count;
-        Dwarf_Error de;
+        for (dwarf::taddr pc = low_pc; pc < high_pc; ++pc) {
+            auto it = lt.find_address(pc);
+            if (it == lt.end())
+                continue;
 
-        if (dwarf_srclines(cu, &lines, &count, &de) != DW_DLV_OK) {
-            error = std::string("read_debug_cu|get_src: ") + dwarf_errmsg(de);
-            return false;
+            source_file& file = get_source_file(it->file->path);
+            uint64_t lineno = it->line;
+            pc_to_lines_[pc + load_address] = &file.get_line(lineno);
         }
-
-        Dwarf_Addr low_pc = 0;
-        Dwarf_Addr high_pc = 0;
-        dwarf_lowpc(cu, &low_pc, &de);
-        if (dwarf_highpc(cu, &high_pc, &de) != DW_DLV_OK) {
-            /* high_pc is an offset instead of absolute address */
-            high_pc = low_pc + high_pc;
-        }
-
-        Dwarf_Addr prev_address = 0;
-        const source_line* prev_source_line = nullptr;
-
-        auto register_address = [&](Dwarf_Addr current, Dwarf_Addr prev,
-                                    const source_line* prev_line) {
-            if (!prev || !prev_line)
-                return;
-            for (auto a = prev_address; a < current; ++a) {
-                if (pc_to_lines_[a] == nullptr)
-                    pc_to_lines_[a] = prev_line;
-            }
-        };
-
-        for (Dwarf_Signed i = 0; i < count; ++i) {
-            Dwarf_Addr address = 0;
-            Dwarf_Unsigned lineno = 0;
-            char* file = nullptr;
-            Dwarf_Line line = lines[i];
-
-            if (dwarf_lineaddr(line, &address, &de) != DW_DLV_OK ||
-                dwarf_lineno(line, &lineno, &de) != DW_DLV_OK ||
-                dwarf_linesrc(line, &file, &de) != DW_DLV_OK) {
-                error =
-                    std::string("read_debug_cu|read_line: ") + dwarf_errmsg(de);
-                return false;
-            }
-
-            register_address(address, prev_address, prev_source_line);
-
-            source_file& source = get_source_file(file);
-            prev_address = address;
-            prev_source_line = &source.get_line(lineno);
-        }
-
-        // register address for last instruction
-        register_address(high_pc, prev_address, prev_source_line);
-        return true;
     }
 
-    /* read dwarf file @file */
-    bool read_dwarf(const std::string& file, std::string& error)
+    /* read dwarf file @file loaded at @load_address */
+    bool read_dwarf(const std::string& file, uint64_t load_address,
+                    std::string& error)
     {
         int fd = open(file.c_str(), O_RDONLY);
         if (fd < 0) {
@@ -492,40 +491,63 @@ private:
             return false;
         }
 
-        Dwarf_Debug dbg;
-        Dwarf_Error de;
-        Dwarf_Unsigned cu_offset = 0;
+        try {
+            elf::elf ef(elf::create_mmap_loader(fd));
+            dwarf::dwarf dw(dwarf::elf::create_loader(ef));
+            for (auto cu : dw.compilation_units()) {
+                try {
+                    auto pc_ranges = dwarf::die_pc_range(cu.root());
+                    for (auto& range : pc_ranges) {
+                        dwarf::taddr low = range.low;
+                        dwarf::taddr high = range.high;
+                        read_dwarf_table(cu.get_line_table(), low, high,
+                                         load_address);
+                    }
+                } catch (std::out_of_range& exc) {
+                    if (std::string(exc.what()) !=
+                        "DIE does not have attribute DW_AT_low_pc")
+                        throw;
+                }
+            }
+        } catch (dwarf::format_error& exc) {
+            if (std::string(exc.what()) ==
+                "required .debug_info section missing")
+                return true;
+            throw;
+        }
 
-        auto cleanup = [&]() {
-            close(fd);
-            dwarf_finish(dbg, &de);
-        };
+        return true;
+    }
 
-        if (dwarf_init(fd, DW_DLC_READ, nullptr, nullptr, &dbg, &de) !=
-            DW_DLV_OK) {
-            error = std::string("dwarf_init: ") + dwarf_errmsg(de);
-            cleanup();
+    bool read_elf(binary_file& file, uint64_t load_address, std::string& error)
+    {
+        int fd = open(file.path().c_str(), O_RDONLY);
+        if (fd < 0) {
+            error = strerror(errno);
             return false;
         }
 
-        while (dwarf_next_cu_header(dbg, nullptr, nullptr, nullptr, nullptr,
-                                    &cu_offset, &de) == DW_DLV_OK) {
-            Dwarf_Die die = nullptr;
-            Dwarf_Die ret_die = nullptr;
-            Dwarf_Half tag;
-            while (dwarf_siblingof(dbg, die, &ret_die, &de) == DW_DLV_OK) {
-                die = ret_die;
-                if (dwarf_tag(die, &tag, &de) == DW_DLV_OK &&
-                    tag == DW_TAG_compile_unit) {
-                    if (!read_debug_cu(die, error)) {
-                        cleanup();
-                        return false;
-                    }
-                }
+        elf::elf f(elf::create_mmap_loader(fd));
+        for (auto& sec : f.sections()) {
+            if (sec.get_hdr().type != elf::sht::symtab &&
+                sec.get_hdr().type != elf::sht::dynsym)
+                continue;
+
+            for (auto sym : sec.as_symtab()) {
+                auto& d = sym.get_data();
+                if (d.type() != elf::stt::func) // ignore non func
+                    continue;
+                if (d.shnxd == elf::enums::shn::undef) // ignore undef syms
+                    continue;
+                std::string name = sym.get_name();
+                uint64_t pc = d.value + load_address;
+                uint64_t size = d.size;
+                const uint8_t* code = nullptr;
+                symbol& s = get_symbol(name, pc, size, code, file);
+                (void)s;
             }
         }
 
-        cleanup();
         return true;
     }
 
@@ -578,7 +600,7 @@ private:
     std::unordered_map<uint64_t /* pc */, instruction*> instructions_mapping_;
     std::unordered_map<uint64_t /* pc */, translation_block*> blocks_mapping_;
     std::unordered_map<uint64_t /* pc */, symbol*> symbols_mapping_;
-    std::unordered_map<uint64_t /* pc */, binary_file*> files_mapping_;
+    std::unordered_map<uint64_t /* pc */, binary_file*> binary_files_mapping_;
 
     std::unordered_map<std::string /* name */, binary_file> binary_files_;
     std::unordered_map<std::string /* path */, source_file> source_files_;
@@ -624,14 +646,13 @@ void plugin_close()
 }
 
 translation_block* get_translation_block(uint64_t pc, const uint8_t* code,
-                                         size_t size, const char* symbol_name,
-                                         uint64_t symbol_pc, size_t symbol_size,
-                                         const uint8_t* symbol_code,
-                                         const char* binary_file_path)
+                                         size_t size,
+                                         const char* binary_file_path,
+                                         uint64_t binary_file_load_address)
 {
     translation_block& b = plugin_manager::get().get_translation_block(
-        pc, code, size, symbol_name, symbol_pc, symbol_size, symbol_code,
-        binary_file_path);
+        pc, code, size, binary_file_path ? binary_file_path : "",
+        binary_file_load_address);
     return &b;
 }
 
