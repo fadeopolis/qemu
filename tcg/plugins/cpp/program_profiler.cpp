@@ -25,10 +25,7 @@ public:
         OTHER,     /* jump or sequential execution */
     };
 
-    basic_block(translation_block& tb)
-        : tb_(tb), size_(tb_.size())
-    {
-    }
+    basic_block(translation_block& tb) : tb_(tb), size_(tb_.size()) {}
 
     uint64_t id() const { return tb_.id(); }
     uint64_t pc() const { return tb_.pc(); }
@@ -59,7 +56,7 @@ public:
         orig_bb.size_ = new_bb.pc() - orig_bb.pc();
 
         // report block chain
-        for (auto* s: orig_bb.successors())
+        for (auto* s : orig_bb.successors())
             new_bb.chain_block(*s);
         orig_bb.successors_.clear();
         // chain new block to orig one only
@@ -416,12 +413,12 @@ static json json_one_symbol(
     return j;
 }
 
-class plugin_function_call_graph : public plugin
+class plugin_program_profiler : public plugin
 {
 public:
-    plugin_function_call_graph()
-        : plugin("function_call_graph", "compute call graph from symbols "
-                                        "and outputs json description for it")
+    plugin_program_profiler()
+        : plugin("program_profiler", "profile program "
+                                     "and outputs json description for it")
     {
     }
 
@@ -537,12 +534,13 @@ private:
             }
         }
 
-        if (previous_bb) { 
+        if (previous_bb) {
             // jump in the middle of a block that already exists, split it now
             // potential split of new_bb due to mapped block must be made before
             // this one, to ensure successors blocks are correct (we work from
             // high to low addresses)
-            previous_bb->split_block(new_bb); }
+            previous_bb->split_block(new_bb);
+        }
 
         return new_bb;
     }
@@ -666,4 +664,4 @@ private:
     std::unordered_map<symbol*, basic_block*> entry_points_;
 };
 
-REGISTER_PLUGIN(plugin_function_call_graph);
+REGISTER_PLUGIN(plugin_program_profiler);
