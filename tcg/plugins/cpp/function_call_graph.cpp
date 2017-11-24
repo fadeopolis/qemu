@@ -94,7 +94,6 @@ public:
     void set_loop_header(basic_block* lh) { loop_header_ = lh; }
 
 private:
-    uint64_t id_;
     translation_block& tb_;
     size_t size_;
     bb_type type_ = bb_type::OTHER;
