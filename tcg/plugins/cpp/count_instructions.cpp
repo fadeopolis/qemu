@@ -1,7 +1,6 @@
 #include "plugin_api.h"
 
 #include <algorithm>
-#include <iostream>
 #include <numeric>
 #include <unordered_map>
 #include <vector>
@@ -28,7 +27,7 @@ public:
             instructions_count_.begin(), instructions_count_.end(), 0,
             [](auto value, const auto& p) { return value + p.second; });
 
-        std::cerr << "executed " << total << " instructions\n";
+        fprintf(output(), "executed %lu instructions\n", total);
 
         std::vector<std::pair<uint64_t, uint64_t>> vec_inst;
 
@@ -45,9 +44,8 @@ public:
             float percentage = count * 100.0 / total;
             const std::string& inst_str =
                 cs_insn_name(instruction::get_capstone_handle(), id);
-            std::cerr << "instr " << inst_str << " executed " << count
-                      << " times "
-                      << "(" << percentage << "%)\n";
+            fprintf(output(), "instr %s executed %lu times (percentage %f)\n",
+                    inst_str.c_str(), count, percentage);
         }
     }
 

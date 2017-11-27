@@ -1,6 +1,6 @@
 #include "plugin_api.h"
 
-#include <iostream>
+#include <inttypes.h>
 
 class plugin_print_instructions : public plugin
 {
@@ -11,60 +11,58 @@ public:
     {
     }
 
-    void on_program_start() override { std::cerr << "start program\n"; }
+    void on_program_start() override { fprintf(output(), "start program\n"); }
 
     void on_block_transition(translation_block& b, translation_block*,
                              translation_block::block_transition_type type,
                              translation_block*) override
     {
-        std::cerr << "-----------------------------------\n";
+        fprintf(output(), "-----------------------------------\n");
         if (!b.current_symbol()->name().empty())
-            std::cerr << "from symbol '" << b.current_symbol()->name()
-                      << "' in file '" << b.current_symbol()->file().path()
-                      << "'\n";
-        std::cerr << "block enter "
-                  << "0x" << std::hex << b.pc() << std::dec << '\n';
-        std::cerr << "block has " << b.instructions().size()
-                  << " instructions\n";
+            fprintf(output(), "from symbol '%s' in file '%s'\n",
+                    b.current_symbol()->name().c_str(),
+                    b.current_symbol()->file().path().c_str());
+        fprintf(output(), "block enter 0x%" PRIx64 "\n", b.pc());
+        fprintf(output(), "block has %lu instructions\n",
+                b.instructions().size());
 
         using tt = translation_block::block_transition_type;
         switch (type) {
         case tt::START:
-            std::cerr << "reached by program start\n";
+            fprintf(output(), "reached by program start\n");
             break;
         case tt::CALL:
-            std::cerr << "reached by call\n";
+            fprintf(output(), "reached by call\n");
             break;
         case tt::RETURN:
-            std::cerr << "reached by return\n";
+            fprintf(output(), "reached by return\n");
             break;
         case tt::SEQUENTIAL:
-            std::cerr << "reached by sequential execution\n";
+            fprintf(output(), "reached by sequential execution\n");
             break;
         case tt::JUMP:
-            std::cerr << "reached by jump\n";
+            fprintf(output(), "reached by jump\n");
             break;
         }
     }
 
     void on_instruction_exec(translation_block&, instruction& i) override
     {
-        std::cerr << "exec 0x" << std::hex << i.pc() << std::dec << " "
-                  << i.str() << '\n';
+        fprintf(output(), "exec 0x%" PRIx64 " %s\n", i.pc(), i.str().c_str());
         const source_line* line = i.line();
         if (line) {
-            std::cerr << "// from file " << line->file().path() << ":"
-                      << line->number() << ": " << line->line() << '\n';
+            fprintf(output(), "// from file %s:%u:%s\n",
+                    line->file().path().c_str(), line->number(),
+                    line->line().c_str());
         }
     }
 
     void on_block_exit(translation_block& b) override
     {
-        std::cerr << "block exit  "
-                  << "0x" << std::hex << b.pc() << std::dec << '\n';
+        fprintf(output(), "block exit 0x%" PRIx64 "\n", b.pc());
     }
 
-    void on_program_end() override { std::cerr << "end program\n"; }
+    void on_program_end() override { fprintf(output(), "end program\n"); }
 
 private:
 };

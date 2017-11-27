@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <inttypes.h>
-#include <iostream>
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
@@ -61,8 +60,8 @@ public:
         size_t size = s.size();
         const uint8_t* code = s.code();
 
-        std::cerr << "symbol '" << s.name() << "' from file '"
-                  << s.file().path() << "'\n";
+        fprintf(output(), "symbol '%s' from file '%s'\n", s.name().c_str(),
+                s.file().path().c_str());
         const source_line* prev_line = nullptr;
         std::unordered_map<const source_line*, uint64_t /* count */>
             source_hits;
@@ -93,7 +92,7 @@ public:
                     count ? green : black, i.str().c_str(), white);
             cs_inst = instruction::get_new_capstone_instruction();
         }
-        std::cerr << "--------------------------------------------\n";
+        fprintf(output(), "--------------------------------------------\n");
         if (!source_hits.empty()) {
             std::vector<std::pair<const source_line*, uint64_t>> lines;
             lines.insert(lines.end(), source_hits.begin(), source_hits.end());

@@ -1,6 +1,5 @@
 #include "plugin_api.h"
 
-#include <iostream>
 #include <map>
 
 class plugin_cpu_flame_graph_profiler : public plugin
@@ -53,18 +52,18 @@ private:
         return res;
     }
 
-    static void dump_flame_graph_stack(const sym_call_stack& cs, uint64_t count)
+    void dump_flame_graph_stack(const sym_call_stack& cs, uint64_t count)
     {
-        std::cerr << "all";
+        fprintf(output(), "all");
         for (const symbol* sym_ptr : cs) {
             const symbol& sym = *sym_ptr;
             std::string sym_name = sym.name();
             if (sym_name.empty()) {
                 sym_name = "[unknown]";
             }
-            std::cerr << ";" << sym_name;
+            fprintf(output(), ";%s", sym_name.c_str());
         }
-        std::cerr << " " << count << '\n';
+        fprintf(output(), " %lu\n", count);
     }
 
     uint64_t count_inst = 0;

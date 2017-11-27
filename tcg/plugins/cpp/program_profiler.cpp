@@ -3,7 +3,6 @@
 #include "json.hpp"
 
 #include <algorithm>
-#include <iostream>
 #include <set>
 #include <sstream>
 #include <unordered_map>
@@ -656,7 +655,7 @@ private:
 
         j["symbols"] = json_symbols(symbols_to_blocks, symbols_successors,
                                     covered_source_lines, covered_instructions);
-        std::cerr << j.dump(4, ' ');
+        fprintf(output(), "%s\n", j.dump(4, ' ').c_str());
     }
 
     std::unordered_map<uint64_t /* id */, basic_block> blocks_;

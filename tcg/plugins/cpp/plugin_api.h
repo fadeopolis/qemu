@@ -1,6 +1,7 @@
 #pragma once
 
 #include <capstone/capstone.h>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <functional>
@@ -102,6 +103,7 @@ public:
 
     const std::string& path() const { return path_; }
     const std::vector<symbol*>& symbols() const { return symbols_; }
+
 private:
     std::string path_;
     std::vector<symbol*> symbols_;
@@ -240,6 +242,8 @@ public:
     const std::string& description() const { return description_; }
 
 protected:
+    // output stream
+    FILE* output() const;
     // get or create an instruction
     static instruction&
     get_instruction(uint64_t pc, instruction::capstone_inst_ptr capstone_inst);

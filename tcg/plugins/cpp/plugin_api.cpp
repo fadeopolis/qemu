@@ -298,7 +298,7 @@ public:
     {
         const auto& it = available_plugins_.emplace(p.name(), &p);
         if (!it.second) {
-            fprintf(out_, "FATAL: plugin %s was already registered\n",
+            fprintf(stderr, "FATAL: plugin %s was already registered\n",
                     p.name().c_str());
             exit(EXIT_FAILURE);
         }
@@ -379,7 +379,8 @@ public:
         }
     }
 
-    void set_out(FILE* out) { out_ = out; }
+    FILE* get_output() const { return out_; }
+    void set_output(FILE* out) { out_ = out; }
 
 private:
     plugin_manager() {}
@@ -553,10 +554,10 @@ private:
 
     void list_available_plugins()
     {
-        fprintf(out_, "plugins available are:\n");
+        fprintf(stderr, "plugins available are:\n");
         for (const auto& pair : available_plugins_) {
             const plugin& p = *pair.second;
-            fprintf(out_, "- %s: %s\n", p.name().c_str(),
+            fprintf(stderr, "- %s: %s\n", p.name().c_str(),
                     p.description().c_str());
         }
     }
@@ -566,8 +567,8 @@ private:
         const char* plugins_list_str = getenv(env_var_plugins_name_.c_str());
 
         if (!plugins_list_str) {
-            fprintf(out_, "FATAL: env var %s must be set to list of active "
-                          "plugins (comma separated)\n",
+            fprintf(stderr, "FATAL: env var %s must be set to list of active "
+                            "plugins (comma separated)\n",
                     env_var_plugins_name_.c_str());
             list_available_plugins();
             exit(EXIT_FAILURE);
@@ -581,7 +582,7 @@ private:
         for (const auto& name : plugins_list) {
             const auto& it = available_plugins_.find(name);
             if (it == available_plugins_.end()) {
-                fprintf(out_, "FATAL: plugin %s is unknown\n", name.c_str());
+                fprintf(stderr, "FATAL: plugin %s is unknown\n", name.c_str());
                 list_available_plugins();
                 exit(EXIT_FAILURE);
             }
@@ -632,17 +633,23 @@ call_stack plugin::get_call_stack()
     return plugin_manager::get().get_call_stack();
 }
 
+FILE* plugin::output() const
+{
+    return plugin_manager::get().get_output();
+}
+
 const std::string plugin_manager::env_var_plugins_name_ = "TCG_PLUGIN_CPP";
 
 void plugin_init(FILE* out, enum architecture arch)
 {
-    plugin_manager::get().set_out(out);
+    plugin_manager::get().set_output(out);
     capstone::set_guest_architecture(arch);
     plugin_manager::get().event_program_start();
 }
 
 void plugin_close()
 {
+    fflush(plugin_manager::get().get_output());
 }
 
 translation_block* get_translation_block(uint64_t pc, const uint8_t* code,
