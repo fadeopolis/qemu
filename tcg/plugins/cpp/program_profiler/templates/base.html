@@ -9,22 +9,24 @@
         <script src="./ext/js/jquery.dataTables.min.js"></script>
         <script src="./ext/js/svg-pan-zoom.min.js"></script>
         <script>
-$(document).ready(function(){
-    $('#svg_div').load('{{ svg_file }}', function() {
-        $('#svg_div').children('svg').attr('id', 'svg_pan');
-        $('#svg_div').children('svg').attr('width', '100%');
-        $('#svg_div').children('svg').attr('style',
-            'max-width:100%;max-height:70vh;');
-        svgPanZoom('#svg_pan', {
-            zoomEnabled: true,
-            controlIconsEnabled: true,
-            zoomScaleSensitivity: 0.5
-        });
-        $('.dyn_table').dataTable({
-            "paging": false
-        });
-    });
-});
+            $(document).ready(function(){
+                $('.dyn_table').dataTable({
+                    "paging": false
+                });
+                $('#svg_div').load('{{ svg_file }}', function() {
+                    $('#svg_div').children('svg').attr('id', 'svg_pan');
+                    $('#svg_div').children('svg').attr('width', '100%');
+                    $('#svg_div').children('svg').attr('style',
+                        'max-width:100%;max-height:70vh;');
+                    svgPanZoom('#svg_pan', {
+                        minZoom: 0.001,
+                        maxZoom: 1000,
+                        zoomEnabled: true,
+                        controlIconsEnabled: true,
+                        zoomScaleSensitivity: 0.5
+                    });
+                });
+            });
         </script>
         <style type="text/css">
 @import './ext/css/jquery.dataTables.min.css';

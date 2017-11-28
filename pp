@@ -4,7 +4,7 @@
 # QEMU must have been built in current folder
 #example: ./pp x86_64 ~/out true
 
-set -euo pipefail
+set -uo pipefail
 
 script_directory=$(dirname $(readlink -f $0))
 
@@ -22,6 +22,14 @@ error()
 info()
 {
     echo "INFO: $@"
+}
+
+handler()
+{
+    info "sending SIGTERM to qemu..."
+    kill -s SIGTERM $qemu_pid
+    wait $qemu_pid
+    qemu_status=$?
 }
 
 driver()
@@ -46,7 +54,14 @@ driver()
     qemu_bin="$script_directory/$architecture-linux-user/qemu-$architecture"
     python_script="$script_directory/tcg/plugins/cpp/program_profiler/gen_files_from_json.py"
 
-    "$qemu_bin" -tcg-plugin cpp "$program" "$@" || die "running QEMU failed"
+    "$qemu_bin" -tcg-plugin cpp "$program" "$@" <&0 &
+    qemu_pid=$!
+    trap handler SIGINT
+    wait $qemu_pid
+    qemu_status=$?
+    [ $qemu_status -ne 0 ] && error "QEMU failed: returned $qemu_status"
+    trap - SIGINT
+
     "$python_script" -i "$TPI_OUTPUT" -o "$output_dir" || die "python script failed"
 
     echo "output is available at $output_dir/index.html"

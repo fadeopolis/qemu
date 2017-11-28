@@ -57,15 +57,20 @@ def deadline(timeout, *args):
 
         new_f.__name__ = f.__name__
         return new_f
+
     return decorate
 
 
 @deadline(10)
-def render_dot(dot, out_file):
+def render_dot_in_limited_time(dot, out_dot_file, out_img_file):
     try:
-        dot.render(out_file)
+        dot.render(out_dot_file)
     except TimeoutException:
         logging.warning('DOT_FILE: generate file was too long, skipping it...')
+        try:
+            os.remove(out_img_file)
+        except OSError:
+            pass
 
 
 def log():
@@ -164,11 +169,13 @@ def generate_index(symbols, original_json_input, output_dir, output_file,
     with open(output_file, 'w') as f:
         f.write(out)
 
+    svg_out = output_dot_file + '.svg'
     log().info('generate dot file %s', output_dot_file)
-    log().info('generate svg file %s', output_dot_file + '.svg')
-    render_dot(dot, output_dot_file)
+    log().info('generate svg file %s', svg_out)
+    render_dot_in_limited_time(dot, output_dot_file, svg_out)
 
 
+@deadline(10)
 def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
                          template_file, sym_number, sym_total_number):
     output_dot_file_name = output_file + '.dot.txt'
@@ -280,10 +287,10 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
     with open(output_file, 'w') as f:
         f.write(out)
 
+    svg_out = output_dot_file + '.svg'
     log().info('%s generate dot file %s', progress_str, output_dot_file)
-    log().info('%s generate svg file %s', progress_str,
-               output_dot_file + '.svg')
-    render_dot(dot, output_dot_file)
+    log().info('%s generate svg file %s', progress_str, svg_out)
+    dot.render(output_dot_file)
 
 
 def generate_files(input_json, output_dir):
@@ -340,8 +347,17 @@ def generate_files(input_json, output_dir):
     sym_number = 1
     for s in j['symbols']:
         output_file = symbol_file_prefix + str(s['id']) + '.html'
-        generate_symbol_file(s, output_dir, output_file, output_index, j2env,
-                             'symbol.html', sym_number, total_syms)
+        try:
+            generate_symbol_file(s, output_dir, output_file, output_index,
+                                 j2env, 'symbol.html', sym_number, total_syms)
+        except TimeoutException:
+            logging.warning(
+                'SYMBOL_FILE: generate file was too long, skipping it...')
+            try:
+                os.remove(os.path.join(output_dir, output_file))
+            except OSError:
+                pass
+
         sym_number += 1
 
 

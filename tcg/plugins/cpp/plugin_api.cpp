@@ -310,7 +310,7 @@ public:
     {
         const auto& it = available_plugins_.emplace(p.name(), &p);
         if (!it.second) {
-            fprintf(stderr, "FATAL: plugin %s was already registered\n",
+            fprintf(stderr_out_, "FATAL: plugin %s was already registered\n",
                     p.name().c_str());
             exit(EXIT_FAILURE);
         }
@@ -386,6 +386,7 @@ public:
 
     void event_cpus_stopped()
     {
+        fprintf(stderr_out_, "TCG_PLUGIN_CPP: event_cpus_stopped\n");
         for (const auto& p : plugins_) {
             p->on_program_end();
         }
@@ -409,15 +410,21 @@ private:
 
         std::string error;
         if (!path.empty()) {
+            fprintf(stderr_out_, "TCG_PLUGIN_CPP: read ELF/DWARF for %s... ",
+                    path.c_str());
+            fflush(stderr_out_);
             if (!read_elf(file, load_address, error)) {
-                fprintf(stderr, "TCG_PLUGIN_CPP WARNING: error reading ELF for "
-                                "file %s: %s\n",
+                fprintf(stderr_out_,
+                        "TCG_PLUGIN_CPP: WARNING - error reading ELF for "
+                        "file %s: %s\n",
                         path.c_str(), error.c_str());
             } else if (!read_dwarf(path, load_address, error)) {
-                fprintf(stderr, "TCG_PLUGIN_CPP WARNING: error reading DWARF "
-                                "for file %s: %s\n",
+                fprintf(stderr_out_,
+                        "TCG_PLUGIN_CPP: WARNING - error reading DWARF "
+                        "for file %s: %s\n",
                         path.c_str(), error.c_str());
             }
+            fprintf(stderr_out_, "done\n");
         }
 
         return file;
@@ -483,15 +490,35 @@ private:
     void read_dwarf_table(const dwarf::line_table& lt, dwarf::taddr low_pc,
                           dwarf::taddr high_pc, uint64_t load_address)
     {
-        for (dwarf::taddr pc = low_pc; pc < high_pc; ++pc) {
-            auto it = lt.find_address(pc);
-            if (it == lt.end())
-                continue;
+        dwarf::taddr last_line_pc = low_pc;
+        const source_line* last_src = nullptr;
 
+        // register pc found from @line_pc to @current_pc with @src
+        auto save_line = [load_address, this](const source_line* src,
+                                              dwarf::taddr line_pc,
+                                              dwarf::taddr current_pc) {
+            if (!src)
+                return;
+            for (dwarf::taddr pc = line_pc; pc < current_pc; ++pc)
+                pc_to_lines_[pc + load_address] = src;
+        };
+
+        for (auto it = lt.begin(); it != lt.end(); ++it) {
+            dwarf::taddr current_pc = it->address;
+            if (current_pc >= high_pc) // not after
+                break;
+
+            if (current_pc >= low_pc)
+                save_line(last_src, last_line_pc, current_pc);
+
+            // get src that match current address
+            last_line_pc = current_pc;
             source_file& file = get_source_file(it->file->path);
             uint64_t lineno = it->line;
-            pc_to_lines_[pc + load_address] = &file.get_line(lineno);
+            last_src = &file.get_line(lineno);
         }
+        // register all last lines until high_pc
+        save_line(last_src, last_line_pc, high_pc);
     }
 
     /* read dwarf file @file loaded at @load_address */
@@ -566,10 +593,10 @@ private:
 
     void list_available_plugins()
     {
-        fprintf(stderr, "plugins available are:\n");
+        fprintf(stderr_out_, "plugins available are:\n");
         for (const auto& pair : available_plugins_) {
             const plugin& p = *pair.second;
-            fprintf(stderr, "- %s: %s\n", p.name().c_str(),
+            fprintf(stderr_out_, "- %s: %s\n", p.name().c_str(),
                     p.description().c_str());
         }
     }
@@ -579,8 +606,9 @@ private:
         const char* plugins_list_str = getenv(env_var_plugins_name_.c_str());
 
         if (!plugins_list_str) {
-            fprintf(stderr, "FATAL: env var %s must be set to list of active "
-                            "plugins (comma separated)\n",
+            fprintf(stderr_out_,
+                    "FATAL: env var %s must be set to list of active "
+                    "plugins (comma separated)\n",
                     env_var_plugins_name_.c_str());
             list_available_plugins();
             exit(EXIT_FAILURE);
@@ -594,7 +622,8 @@ private:
         for (const auto& name : plugins_list) {
             const auto& it = available_plugins_.find(name);
             if (it == available_plugins_.end()) {
-                fprintf(stderr, "FATAL: plugin %s is unknown\n", name.c_str());
+                fprintf(stderr_out_, "FATAL: plugin %s is unknown\n",
+                        name.c_str());
                 list_available_plugins();
                 exit(EXIT_FAILURE);
             }
@@ -602,7 +631,10 @@ private:
         }
     }
 
-    FILE* out_ = stderr;
+    // duplicate stderr to avoid problems with programs closing their
+    // standard in/out
+    FILE* stderr_out_ = fdopen(dup(fileno(stderr)), "a");
+    FILE* out_ = stderr_out_;
 
     uint64_t instruction_id_ = 0;
     uint64_t block_id_ = 0;
