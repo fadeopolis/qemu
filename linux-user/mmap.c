@@ -50,7 +50,7 @@ bool get_mapped_file(uint64_t addr, const char** name, uint64_t* base_addr)
     return NULL;
 }
 
-static void add_mapinfo(const char* filename, uint64_t addr, size_t length)
+void add_mapinfo(const char* filename, uint64_t addr, size_t length)
 {
     struct mapinfo *info = g_new(struct mapinfo, 1);
     info->filename = g_strdup(filename);

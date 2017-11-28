@@ -441,6 +441,8 @@ void mmap_fork_start(void);
 void mmap_fork_end(int child);
 /* return file mapped at address @addr, its @name and @base_addr */
 bool get_mapped_file(uint64_t addr, const char** name, uint64_t* base_addr);
+/* add information that file @filename is mapped @addr for a length @length */
+void add_mapinfo(const char* filename, uint64_t addr, size_t length);
 
 /* main.c */
 extern unsigned long guest_stack_size;

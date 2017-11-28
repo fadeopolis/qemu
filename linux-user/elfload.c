@@ -2052,6 +2052,9 @@ static void load_elf_image(const char *image_name, int image_fd,
            address does not conflict with MMAP_MIN_ADDR or the
            QEMU application itself.  */
         probe_guest_base(image_name, loaddr, hiaddr);
+        /* file will have a non-zero address, thus load_offset should not be
+         * shifted */
+        add_mapinfo(image_name, 0, hiaddr);
     }
     load_bias = load_addr - loaddr;
 
