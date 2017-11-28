@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import sys
 
 from jinja2 import Environment, FileSystemLoader
@@ -27,6 +28,44 @@ def ext_dir():
 
 def get_jinja_env(template_dir):
     return Environment(loader=FileSystemLoader(template_dir))
+
+
+class TimeoutException(Exception):
+    pass
+
+
+def deadline(timeout, *args):
+    """is a the decotator name with the timeout parameter in second"""
+
+    def decorate(f):
+        """ the decorator creation """
+
+        def handler(signum, frame):
+            """ the handler for the timeout """
+            raise TimeoutException(
+            )  #when the signal have been handle raise the exception
+
+        def new_f(*args):
+            """ the initiation of the handler,
+            the lauch of the function and the end of it"""
+            signal.signal(signal.SIGALRM,
+                          handler)  #link the SIGALRM signal to the handler
+            signal.alarm(timeout)  #create an alarm of timeout second
+            res = f(*args)  #lauch the decorate function with this parameter
+            signal.alarm(0)  #reinitiate the alarm
+            return res  #return the return value of the fonction
+
+        new_f.__name__ = f.__name__
+        return new_f
+    return decorate
+
+
+@deadline(10)
+def render_dot(dot, out_file):
+    try:
+        dot.render(out_file)
+    except TimeoutException:
+        logging.warning('DOT_FILE: generate file was too long, skipping it...')
 
 
 def log():
@@ -127,11 +166,11 @@ def generate_index(symbols, original_json_input, output_dir, output_file,
 
     log().info('generate dot file %s', output_dot_file)
     log().info('generate svg file %s', output_dot_file + '.svg')
-    dot.render(output_dot_file)
+    render_dot(dot, output_dot_file)
 
 
 def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
-                         template_file):
+                         template_file, sym_number, sym_total_number):
     output_dot_file_name = output_file + '.dot.txt'
     output_dot_file = os.path.join(output_dir, output_dot_file_name)
     output_file = os.path.join(output_dir, output_file)
@@ -222,7 +261,8 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
     successors = list_builder(sym['successors'])
     predecessors = list_builder(sym['predecessors'])
 
-    log().info('generate symbol file %s', output_file)
+    progress_str = '[' + str(sym_number) + '/' + str(sym_total_number) + ']'
+    log().info('%s generate symbol file %s', progress_str, output_file)
     out = j2env.get_template(template_file).render(
         title='Symbol',
         dot_file=output_dot_file_name,
@@ -240,9 +280,10 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
     with open(output_file, 'w') as f:
         f.write(out)
 
-    log().info('generate dot file %s', output_dot_file)
-    log().info('generate svg file %s', output_dot_file + '.svg')
-    dot.render(output_dot_file)
+    log().info('%s generate dot file %s', progress_str, output_dot_file)
+    log().info('%s generate svg file %s', progress_str,
+               output_dot_file + '.svg')
+    render_dot(dot, output_dot_file)
 
 
 def generate_files(input_json, output_dir):
@@ -295,10 +336,13 @@ def generate_files(input_json, output_dir):
     generate_index(j['symbols'], 'data.json', output_dir, output_index, j2env,
                    'index.html')
 
+    total_syms = len(j['symbols'])
+    sym_number = 1
     for s in j['symbols']:
         output_file = symbol_file_prefix + str(s['id']) + '.html'
         generate_symbol_file(s, output_dir, output_file, output_index, j2env,
-                             'symbol.html')
+                             'symbol.html', sym_number, total_syms)
+        sym_number += 1
 
 
 def main(argv):
