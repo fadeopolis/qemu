@@ -14,22 +14,51 @@ static translation_block** current_block_ptr;
 static TCGPluginInterface* plugin_tpi;
 
 /* code architecture dependent */
-#if defined(TARGET_X86_64)
-/* on x86_64, return address in on the top of stack after a call is done */
+#if defined(TARGET_X86_64) || defined(TARGET_I386)
+/* on i386/x86_64, return address in on the top of stack after a call is done */
 static uint64_t get_callee_return_address(void)
 {
     const CPUArchState* cpu_env = tpi_current_cpu_arch(plugin_tpi);
     uint64_t stack_ptr = cpu_env->regs[R_ESP];
+#if defined(TARGET_X86_64)
     return tpi_guest_load64(plugin_tpi, stack_ptr);
+#elif defined(TARGET_I386)
+    return tpi_guest_load32(plugin_tpi, stack_ptr);
+#endif
 }
 
-static enum architecture get_guest_architecture(void)
+#if defined(TARGET_X86_64)
+static enum architecture current_arch = ARCHITECTURE_X86_64;
+#elif defined(TARGET_I386)
+static enum architecture current_arch = ARCHITECTURE_I386;
+#endif
+
+#elif defined(TARGET_ARM) || defined(TARGET_AARCH64)
+static uint64_t get_callee_return_address(void)
 {
-    return ARCHITECTURE_X86_64;
+    /* The return address for a function on ARM is in 32b reg r14
+       or 64b xreg 30.
+       Clear low bit which is used for legacy 13/32 support.
+    */
+    const CPUArchState *cpu_env = tpi_current_cpu_arch(plugin_tpi);
+    return cpu_env->aarch64 ? cpu_env->xregs[30]:
+        (cpu_env->regs[14] & (~(uint64_t)0 << 1));
 }
+
+#if defined(TARGET_AARCH64)
+static enum architecture current_arch = ARCHITECTURE_AARCH64;
+#elif defined(TARGET_ARM)
+static enum architecture current_arch = ARCHITECTURE_ARM;
+#endif
+
 #else
 #error "some functions are not implemented for current architecture"
 #endif
+
+static enum architecture get_guest_architecture(void)
+{
+    return current_arch;
+}
 
 static void on_block_exec(translation_block** b_ptr)
 {

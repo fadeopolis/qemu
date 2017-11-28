@@ -18,7 +18,10 @@ typedef struct translation_block translation_block;
 
 enum architecture
 {
+    ARCHITECTURE_I386,
     ARCHITECTURE_X86_64,
+    ARCHITECTURE_ARM,
+    ARCHITECTURE_AARCH64,
     ARCHITECTURE_UNKNOWN
 };
 

@@ -42,13 +42,25 @@ public:
 private:
     capstone()
     {
-        cs_arch arch;
-        cs_mode mode;
+        cs_arch arch = CS_ARCH_X86;
+        cs_mode mode = CS_MODE_32;
 
         switch (guest_architecture) {
+        case architecture::ARCHITECTURE_I386:
+            arch = CS_ARCH_X86;
+            mode = CS_MODE_32;
+            break;
         case architecture::ARCHITECTURE_X86_64:
             arch = CS_ARCH_X86;
             mode = CS_MODE_64;
+            break;
+        case architecture::ARCHITECTURE_ARM:
+            arch = CS_ARCH_ARM;
+            mode = CS_MODE_ARM;
+            break;
+        case architecture::ARCHITECTURE_AARCH64:
+            arch = CS_ARCH_ARM64;
+            mode = CS_MODE_ARM;
             break;
         case architecture::ARCHITECTURE_UNKNOWN:
             fprintf(stderr, "FATAL: capstone architecture was not set\n");

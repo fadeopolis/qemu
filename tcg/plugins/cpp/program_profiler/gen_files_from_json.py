@@ -58,7 +58,11 @@ def load_json(input_json):
 def get_symbol_src_start(s):
     # first block has the lowest id, which matches the first time block
     # was created, thus the entry block of function
-    first_instr = s['basic_blocks'][0]['instructions'][0]
+    first_block = s['basic_blocks'][0]
+    first_block_instrs = first_block['instructions']
+    if not first_block_instrs:
+        return ''
+    first_instr = first_block_instrs[0]
     src = ''
     src_node = first_instr['src']
     if src_node:
