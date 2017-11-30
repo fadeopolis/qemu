@@ -51,10 +51,12 @@ public:
     }
     const std::string& path() const { return path_; }
 
-    // return empty if number is more than number of lines in file
+    uint64_t length() const { return lines_.size() - 1; }
+
+    // return empty if number is more than number of lines in file or 0
     const source_line& get_line(unsigned int number) const
     {
-        if (number > lines_.size())
+        if (number > length())
             return lines_[0];
         return lines_[number];
     }

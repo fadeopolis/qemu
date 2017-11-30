@@ -265,7 +265,8 @@ static void sort_vec_elem_with_id(std::vector<TypeWithId*>& vec)
 }
 
 template <typename T>
-static std::vector<T*> get_vec_from_unordered_set(std::unordered_set<T*> set)
+static std::vector<T*>
+get_vec_from_unordered_set(const std::unordered_set<T*>& set)
 {
     std::vector<T*> vec;
     vec.reserve(set.size());
@@ -273,8 +274,12 @@ static std::vector<T*> get_vec_from_unordered_set(std::unordered_set<T*> set)
     return vec;
 }
 
+/* return sources for a vector of @instructions,
+ * with a given number lines of @context.
+ * Holes between source lines can be added as well. */
 static std::vector<const source_line*> get_sorted_sources_from_instructions(
-    const std::vector<instruction*>& instructions)
+    const std::vector<instruction*>& instructions, uint64_t context_size,
+    bool fill_holes)
 {
     std::unordered_set<const source_line*> src_set;
     for (auto* i : instructions) {
@@ -282,6 +287,53 @@ static std::vector<const source_line*> get_sorted_sources_from_instructions(
         if (!src)
             continue;
         src_set.emplace(src);
+    }
+
+    if (context_size || fill_holes) {
+        struct bounds
+        {
+            uint64_t min = std::numeric_limits<uint64_t>::max();
+            uint64_t max = std::numeric_limits<uint64_t>::min();
+            uint64_t new_min = 0;
+            uint64_t new_max = 0;
+        };
+        std::unordered_map<const source_file*, bounds> src_bounds;
+
+        // accumulate all bounds for files
+        for (auto* s : src_set) {
+            bounds& b = src_bounds[&s->file()];
+            uint64_t line = static_cast<uint64_t>(s->number());
+            b.min = std::min(line, b.min);
+            b.max = std::max(line, b.max);
+        }
+
+        // correct with context size
+        for (auto& p : src_bounds) {
+            const source_file& f = *p.first;
+            bounds& b = p.second;
+            b.new_max = std::min(b.max + context_size, f.length());
+            if (context_size >= b.min)
+                b.new_min = 1;
+            else
+                b.new_min = b.min - context_size;
+        }
+
+        // add missing lines
+        for (auto& p : src_bounds) {
+            const source_file& f = *p.first;
+            bounds& b = p.second;
+
+            // add context lines
+            for (uint64_t num = b.new_min; num <= b.min; ++num)
+                src_set.emplace(&f.get_line(num));
+            for (uint64_t num = b.max; num <= b.new_max; ++num)
+                src_set.emplace(&f.get_line(num));
+
+            // fill holes if needed
+            if (fill_holes)
+                for (uint64_t num = b.min; num <= b.max; ++num)
+                    src_set.emplace(&f.get_line(num));
+        }
     }
 
     std::vector<const source_line*> src_vec =
@@ -333,7 +385,8 @@ static json json_one_block(const basic_block& bb)
     for (auto* inst : bb.instructions())
         j_inst.emplace_back(json_one_instruction(*inst, true));
 
-    auto src = get_sorted_sources_from_instructions(bb.instructions());
+    auto src =
+        get_sorted_sources_from_instructions(bb.instructions(), 0, false);
     json j_src = json::array();
     for (auto* s : src)
         j_src.emplace_back(json_one_source_line(s, true));
@@ -377,7 +430,7 @@ static json json_one_symbol(
     for (const auto& b : sym_blocks)
         j_blocks.emplace_back(b->id());
 
-    auto src = get_sorted_sources_from_instructions(instructions);
+    auto src = get_sorted_sources_from_instructions(instructions, 3, true);
     json j_src = json::array();
     for (auto* s : src)
         j_src.emplace_back(
