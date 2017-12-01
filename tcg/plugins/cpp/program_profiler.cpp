@@ -1,5 +1,6 @@
 #include "plugin_api.h"
 
+#include "cpu_flame_graph_profiler.h"
 #include "json.hpp"
 
 #include <algorithm>
@@ -465,16 +466,32 @@ static json json_one_symbol(
     return j;
 }
 
+json json_one_call_stack(
+    const plugin_cpu_flame_graph_profiler::sym_call_stack& cs, uint64_t count)
+{
+    json j_cs = json::array();
+    for (auto* s : cs) {
+        j_cs.emplace_back(s->id());
+    }
+    return json{{"symbols", j_cs}, {"count", count}};
+}
+
 class plugin_program_profiler : public plugin
 {
 public:
     plugin_program_profiler()
         : plugin("program_profiler", "profile program "
-                                     "and outputs json description for it")
+                                     "and outputs json description for it"),
+          flame_graph_(2000)
     {
     }
 
 private:
+    void on_block_enter(translation_block& b) override
+    {
+        flame_graph_.on_block_enter(b);
+    }
+
     void
     on_block_transition(translation_block& next, translation_block* prev,
                         translation_block::block_transition_type type,
@@ -621,6 +638,18 @@ private:
         return j;
     }
 
+    json json_call_stacks()
+    {
+        json j = json::array();
+
+        for (auto& p : flame_graph_.call_stack_count()) {
+            const auto& stack = p.first;
+            auto count = p.second;
+            j.emplace_back(json_one_call_stack(stack, count));
+        }
+        return j;
+    }
+
     json json_symbols(
         std::unordered_map<symbol*, std::unordered_set<basic_block*>>&
             symbols_to_blocks,
@@ -708,12 +737,15 @@ private:
 
         j["symbols"] = json_symbols(symbols_to_blocks, symbols_successors,
                                     covered_source_lines, covered_instructions);
+
+        j["call_stacks"] = json_call_stacks();
         fprintf(output(), "%s\n", j.dump(4, ' ').c_str());
     }
 
     std::unordered_map<uint64_t /* id */, basic_block> blocks_;
     std::unordered_map<uint64_t /* pc */, basic_block*> blocks_map_;
     std::unordered_map<symbol*, basic_block*> entry_points_;
+    plugin_cpu_flame_graph_profiler flame_graph_;
 };
 
 REGISTER_PLUGIN(plugin_program_profiler);

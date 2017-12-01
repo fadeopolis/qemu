@@ -1,15 +1,21 @@
 {%include 'base.html' %}
 <a href="{{ dot_file }}">dot source</a>
 <a href="{{ svg_file }}">svg source</a>
+<a href="{{ flamegraph_file }}">flamegraph source</a>
 <a href="{{ json_file }}">json source</a>
 
 <hr/>
 
-<div id="svg_div"></div>
+<div style="float:left;width:50%;" id="svg_div"></div>
+<div style="float:right;width:50%;" ></div>
+<object data="{{ flamegraph_file}}" type="image/svg+xml" width=50%> 
+</object>
+</div>
+<div style="clear:both;"/>
 
 <hr/>
 
-<table class="dyn_table">
+<table style="width:100vw;" class="dyn_table">
     <thead>
         <tr>
             <th>pc</th>

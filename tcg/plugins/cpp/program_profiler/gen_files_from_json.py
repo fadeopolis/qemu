@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import signal
+import subprocess
 import sys
 
 from jinja2 import Environment, FileSystemLoader
@@ -24,6 +25,11 @@ def template_dir():
 
 def ext_dir():
     return os.path.join(os.path.dirname(current_file_path()), 'ext')
+
+
+def flamegraph_script():
+    return os.path.join(
+        os.path.dirname(current_file_path()), 'tools/flamegraph.pl')
 
 
 def get_jinja_env(template_dir):
@@ -125,8 +131,13 @@ def get_symbol_url(s):
     return symbol_file_prefix + str(s['id']) + '.html'
 
 
-def generate_index(symbols, original_json_input, output_dir, output_file,
-                   j2env, template_file):
+def generate_index(symbols, call_stacks, original_json_input, output_dir,
+                   output_file, j2env, template_file):
+    flamegraph_file_name = output_file + '.flamegraph.txt'
+    flamegraph_image_file_name = flamegraph_file_name + '.svg'
+    flamegraph_file = os.path.join(output_dir, flamegraph_file_name)
+    flamegraph_image_file = os.path.join(output_dir,
+                                         flamegraph_image_file_name)
     output_dot_file_name = output_file + '.dot.txt'
     output_dot_file = os.path.join(output_dir, output_dot_file_name)
     output_file = os.path.join(output_dir, output_file)
@@ -164,10 +175,23 @@ def generate_index(symbols, original_json_input, output_dir, output_file,
         title='Index',
         dot_file=output_dot_file_name,
         svg_file=output_dot_file_name + '.svg',
+        flamegraph_file=flamegraph_image_file_name,
         json_file=original_json_input,
         symbols=syms)
     with open(output_file, 'w') as f:
         f.write(out)
+
+    log().info('generate flamegraph file %s', flamegraph_file)
+    with open(flamegraph_file, 'w') as f:
+        for cs in call_stacks:
+            f.write('all')
+            for s in cs['symbols']:
+                f.write(';' + s['name'])
+            f.write(' ' + str(cs['count']) + '\n')
+    with open(flamegraph_file, 'r') as infile:
+        with open(flamegraph_image_file, 'w') as outfile:
+            subprocess.check_call(
+                flamegraph_script(), stdin=infile, stdout=outfile)
 
     svg_out = output_dot_file + '.svg'
     log().info('generate dot file %s', output_dot_file)
@@ -331,6 +355,8 @@ def generate_files(input_json, output_dir):
         if b['loop_header']:
             b['loop_header'] = blocks_dict[b['loop_header']]
         b['symbols'] = [symbols_dict[sym_id] for sym_id in b['symbols']]
+    for cs in j['call_stacks']:
+        cs['symbols'] = [symbols_dict[sym_id] for sym_id in cs['symbols']]
 
     # compute predecessors
     for s in j['symbols']:
@@ -340,8 +366,8 @@ def generate_files(input_json, output_dir):
         for succ in s['successors']:
             succ['predecessors'].append(s)
 
-    generate_index(j['symbols'], 'data.json', output_dir, output_index, j2env,
-                   'index.html')
+    generate_index(j['symbols'], j['call_stacks'], 'data.json', output_dir,
+                   output_index, j2env, 'index.html')
 
     total_syms = len(j['symbols'])
     sym_number = 1
