@@ -59,7 +59,9 @@ driver()
     trap handler SIGINT
     wait $qemu_pid
     qemu_status=$?
-    [ $qemu_status -ne 0 ] && error "QEMU failed: returned $qemu_status"
+    # check status, 130 is for CTRL-C
+    [ $qemu_status -ne 0 -a $qemu_status -ne 130 ] &&\
+        die "QEMU failed: returned $qemu_status"
     trap - SIGINT
 
     "$python_script" -i "$TPI_OUTPUT" -o "$output_dir" || die "python script failed"
