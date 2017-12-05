@@ -173,8 +173,8 @@ def generate_index(symbols, call_stacks, original_json_input, output_dir,
     log().info('generate index file %s', output_file)
     out = j2env.get_template(template_file).render(
         title='Index',
-        dot_file=output_dot_file_name,
-        svg_file=output_dot_file_name + '.svg',
+        call_graph_dot_file=output_dot_file_name,
+        call_graph_file=output_dot_file_name + '.svg',
         flamegraph_file=flamegraph_image_file_name,
         json_file=original_json_input,
         symbols=syms)
@@ -296,8 +296,8 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
     log().info('%s generate symbol file %s', progress_str, output_file)
     out = j2env.get_template(template_file).render(
         title='Symbol',
-        dot_file=output_dot_file_name,
-        svg_file=output_dot_file_name + '.svg',
+        cfg_dot_file=output_dot_file_name,
+        cfg_file=output_dot_file_name + '.svg',
         index_file=index_file,
         sym_name=name,
         sym_pc=pc,

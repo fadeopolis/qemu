@@ -1,13 +1,10 @@
 {%include 'base.html' %}
-<a href="{{ index_file }}">Go back to index</a>
-<a href="{{ dot_file }}">dot source</a>
-<a href="{{ svg_file }}">svg source</a>
-
-<hr/>
+<a href="{{ index_file }}">Back to index</a>
+<a href="{{ cfg_dot_file }}">dot source</a>
+<a href="{{ cfg_file }}">control flow graph</a>
 
 <div>
-    <div style="float:right;width:70%;" id="svg_div"></div>
-    <div style="float:left;width:30%;">
+    <div style="float:left;max-width:40%;height:60vh">
         <p>name: {{sym_name}}</p>
         <p>pc: {{sym_pc}}</p>
         <p>size: {{sym_size}}</p>
@@ -30,14 +27,13 @@
         </ul>
         </p>
     </div>
+    <div style="overflow: hidden;height:60vh;" class="svg_div svg_pan">{{ cfg_file }}</div>
 </div>
 
 <div style="clear:both;"/>
-    <hr/>
 
-    <div style="float:right;width:48%;">
-        <p>Source</p>
-        <table class="dyn_table">
+    <div style="float:right;width:49%;">
+        <table class="dyn_table display compact">
             <thead>
                 <tr>
                     <th>File</th>
@@ -59,9 +55,8 @@
         </table>
     </div>
 
-    <div style="float:left;width:48%;">
-        <p>Assembly</p>
-        <table class="dyn_table">
+    <div style="float:left;width:49%;">
+        <table class="dyn_table display compact">
             <thead>
                 <tr>
                     <th>Pc</th>

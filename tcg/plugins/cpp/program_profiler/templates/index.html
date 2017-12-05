@@ -1,40 +1,35 @@
 {%include 'base.html' %}
-<a href="{{ dot_file }}">dot source</a>
-<a href="{{ svg_file }}">svg source</a>
-<a href="{{ flamegraph_file }}">flamegraph source</a>
+<p>
+<a href="{{ call_graph_dot_file }}">dot source</a>
+<a href="{{ call_graph_file }}">call graph</a>
+<a href="{{ flamegraph_file }}">flamegraph</a>
 <a href="{{ json_file }}">json source</a>
+</p>
 
-<hr/>
-
-<div style="float:left;width:50%;" id="svg_div"></div>
-<div style="float:right;width:50%;" ></div>
-<object data="{{ flamegraph_file}}" type="image/svg+xml" width=50%> 
-</object>
-</div>
+<div style="float:left;max-width:50%;height:60vh;" class="svg_div svg_pan">{{ call_graph_file }}</div>
+<div style="overflow: hidden;height:60vh;" class="svg_div">{{ flamegraph_file }}</div>
 <div style="clear:both;"/>
 
-<hr/>
-
-<table style="width:100vw;" class="dyn_table">
-    <thead>
-        <tr>
-            <th>pc</th>
-            <th>name</th>
-            <th>size</th>
-            <th>binary file</th>
-            <th>source file</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for s in symbols %}
-        <tr>
-            <td><a href="{{ s.url }}">{{s.pc}}</a></td>
-            <td>{{s.name}}</td>
-            <td>{{s.size}}</td>
-            <td>{{s.binary}}</td>
-            <td>{{s.src}}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{%include 'footer.html' %}
+    <table class="dyn_table display compact">
+        <thead>
+            <tr>
+                <th>pc</th>
+                <th>name</th>
+                <th>size</th>
+                <th>binary file</th>
+                <th>source file</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in symbols %}
+            <tr>
+                <td><a href="{{ s.url }}">{{s.pc}}</a></td>
+                <td>{{s.name}}</td>
+                <td>{{s.size}}</td>
+                <td>{{s.binary}}</td>
+                <td>{{s.src}}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {%include 'footer.html' %}

@@ -3,29 +3,37 @@
     <head>
         <meta charset="utf-8">
         <title>{{ title }}</title>
+        <script src="./ext/js/jquery.min.js"></script>
+        <script src="./ext/datatables/datatables.min.js"></script>
+        <script src="./ext/js/svg-pan-zoom.min.js"></script>
+        <link rel="stylesheet" type="text/css" href="./ext/datatables/datatables.min.css">
     </head>
     <body>
-        <script src="./ext/js/jquery.min.js"></script>
-        <script src="./ext/js/jquery.dataTables.min.js"></script>
-        <script src="./ext/js/svg-pan-zoom.min.js"></script>
         <script>
             $(document).ready(function(){
-                $('.dyn_table').dataTable({
-                    "paging": false
-                });
-                $('#svg_div').load('{{ svg_file }}', function() {
-                    $('#svg_div').children('svg').attr('id', 'svg_pan');
-                    $('#svg_div').children('svg').attr('width', '100%');
-                    $('#svg_div').children('svg').attr('style',
-                        'max-width:100%;max-height:70vh;');
-                    svgPanZoom('#svg_pan', {
-                        minZoom: 0.001,
-                        maxZoom: 1000,
-                        zoomEnabled: true,
-                        controlIconsEnabled: true,
-                        zoomScaleSensitivity: 0.5
+                $('.svg_div').each(function() {
+                    var file = this.textContent;
+                    this.textContent = '';
+                    $(this).load(file, function() {
+                        var img = $(this).children('svg')
+                        img.attr('width', '100%');
+                        img.attr('height', '100%');
+                        if ($(this).hasClass('svg_pan'))
+                        {
+                            svgPanZoom(img[0], {
+                                minZoom: 0.001,
+                                maxZoom: 1000,
+                                zoomEnabled: true,
+                                controlIconsEnabled: true,
+                                zoomScaleSensitivity: 0.5
+                            });
+                        }
                     });
+                });
+                $('.dyn_table').dataTable({
+                    paging: false,
+                    deferRender: true,
+                    responsive: true
                 });
             });
         </script>
-        <p>{{ title }}</p>
