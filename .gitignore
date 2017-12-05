@@ -139,3 +139,4 @@ trace-ust-all.c
 /qemu-version.h.tmp
 /build
 *.swp
+core

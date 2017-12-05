@@ -487,8 +487,17 @@ private:
         }
     }
 
-    void read_dwarf_table(const dwarf::line_table& lt, dwarf::taddr low_pc,
-                          dwarf::taddr high_pc, uint64_t load_address)
+    struct dwarf_entry
+    {
+        dwarf_entry(uint64_t pc, const source_line* src) : pc(pc), src(src) {}
+        uint64_t pc;
+        const source_line* src;
+        bool operator<(const dwarf_entry& o) const { return pc < o.pc; }
+    };
+
+    void read_dwarf_table(const std::vector<dwarf_entry>& lt,
+                          dwarf::taddr low_pc, dwarf::taddr high_pc,
+                          uint64_t load_address)
     {
         dwarf::taddr last_line_pc = low_pc;
         const source_line* last_src = nullptr;
@@ -503,8 +512,15 @@ private:
                 pc_to_lines_[pc + load_address] = src;
         };
 
-        for (auto it = lt.find_address(low_pc); it != lt.end(); ++it) {
-            dwarf::taddr current_pc = it->address;
+        // we start from first line that is beyond low_pc
+        auto to_find = dwarf_entry(low_pc, nullptr);
+        auto first = std::lower_bound(lt.begin(), lt.end(), to_find);
+
+        for (auto it = first; it != lt.end(); ++it) {
+            auto e = *it;
+            dwarf::taddr current_pc = e.pc;
+            const source_line& src = *e.src;
+
             if (current_pc >= high_pc) // not after
                 break;
 
@@ -512,12 +528,25 @@ private:
 
             // get src that match current address
             last_line_pc = current_pc;
-            source_file& file = get_source_file(it->file->path);
-            uint64_t lineno = it->line;
-            last_src = &file.get_line(lineno);
+            last_src = &src;
         }
         // register all last lines until high_pc
         save_line(last_src, last_line_pc, high_pc);
+    }
+
+    // return a sorted vector of dwarf_entry for @lt
+    // Allow fast lookup to find a pc_range start
+    std::vector<dwarf_entry> read_line_table(const dwarf::line_table& lt)
+    {
+        std::vector<dwarf_entry> res;
+        for (auto& e : lt) {
+            source_file& file = get_source_file(e.file->path);
+            uint64_t lineno = e.line;
+            const source_line& src = file.get_line(lineno);
+            res.emplace_back(e.address, &src);
+        }
+        std::sort(res.begin(), res.end());
+        return res;
     }
 
     /* read dwarf file @file loaded at @load_address */
@@ -534,13 +563,13 @@ private:
             elf::elf ef(elf::create_mmap_loader(fd));
             dwarf::dwarf dw(dwarf::elf::create_loader(ef));
             for (auto cu : dw.compilation_units()) {
+                auto lt = read_line_table(cu.get_line_table());
                 try {
                     auto pc_ranges = dwarf::die_pc_range(cu.root());
                     for (auto& range : pc_ranges) {
                         dwarf::taddr low = range.low;
                         dwarf::taddr high = range.high;
-                        read_dwarf_table(cu.get_line_table(), low, high,
-                                         load_address);
+                        read_dwarf_table(lt, low, high, load_address);
                     }
                 } catch (std::out_of_range& exc) {
                     if (std::string(exc.what()) !=
