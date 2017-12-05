@@ -33,7 +33,7 @@ def flamegraph_script():
 
 
 def get_jinja_env(template_dir):
-    return Environment(loader=FileSystemLoader(template_dir))
+    return Environment(loader=FileSystemLoader(template_dir), autoescape=True)
 
 
 class TimeoutException(Exception):

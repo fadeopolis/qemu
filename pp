@@ -43,6 +43,11 @@ driver()
     program="$1"
     shift
 
+    rustfilt_bin=$(which rustfilt)
+    [ -z "$rustfilt_bin" ] && rustfilt_bin=cat
+    cppfilt_bin=$(which c++filt)
+    [ -z "$cppfilt_bin" ] && cppfilt_bin=cat
+
     which_program=$(which "$program")
     if [ "$which_program" != "" ]
     then
@@ -64,7 +69,10 @@ driver()
         die "QEMU failed: returned $qemu_status"
     trap - SIGINT
 
-    "$python_script" -i "$TPI_OUTPUT" -o "$output_dir" || die "python script failed"
+    out_file="$TPI_OUTPUT".filtered
+    cat "$TPI_OUTPUT" | "$rustfilt_bin" | "$cppfilt_bin" > $out_file
+    echo "json file used is: $out_file"
+    "$python_script" -i "$out_file" -o "$output_dir" || die "python script failed"
 
     echo "output is available at $output_dir/index.html"
 }
