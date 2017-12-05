@@ -503,13 +503,12 @@ private:
                 pc_to_lines_[pc + load_address] = src;
         };
 
-        for (auto it = lt.begin(); it != lt.end(); ++it) {
+        for (auto it = lt.find_address(low_pc); it != lt.end(); ++it) {
             dwarf::taddr current_pc = it->address;
             if (current_pc >= high_pc) // not after
                 break;
 
-            if (current_pc >= low_pc)
-                save_line(last_src, last_line_pc, current_pc);
+            save_line(last_src, last_line_pc, current_pc);
 
             // get src that match current address
             last_line_pc = current_pc;
