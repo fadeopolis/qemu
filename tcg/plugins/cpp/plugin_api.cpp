@@ -563,14 +563,20 @@ private:
             elf::elf ef(elf::create_mmap_loader(fd));
             dwarf::dwarf dw(dwarf::elf::create_loader(ef));
             for (auto cu : dw.compilation_units()) {
-                auto lt = read_line_table(cu.get_line_table());
                 try {
+                    auto lt = read_line_table(cu.get_line_table());
                     auto pc_ranges = dwarf::die_pc_range(cu.root());
                     for (auto& range : pc_ranges) {
                         dwarf::taddr low = range.low;
                         dwarf::taddr high = range.high;
                         read_dwarf_table(lt, low, high, load_address);
                     }
+                } catch (dwarf::format_error& exc) {
+                    fprintf(stderr_out_,
+                            "TCG_PLUGIN_CPP: WARNING - error reading DWARF "
+                            "for compilation unit at offset 0x%" PRIx64 "\n",
+                            cu.get_section_offset());
+                    continue;
                 } catch (std::out_of_range& exc) {
                     if (std::string(exc.what()) !=
                         "DIE does not have attribute DW_AT_low_pc")
