@@ -40,7 +40,7 @@ translation_block* get_translation_block(uint64_t pc, const uint8_t* code,
                                          const char* binary_file_path,
                                          uint64_t binary_file_load_address);
 
-/* block @b is executed
+/* block @b is about to be executed
  *
  * @potential_callee_return_address is where execution should return after
  * calling a function. This is used to track function calls. On x86_64, it is
@@ -48,8 +48,16 @@ translation_block* get_translation_block(uint64_t pc, const uint8_t* code,
  * not have to be correct, a framework can simply always return the good memory
  * location, and if a call is done, it will be detected.
  */
-void event_block_executed(translation_block* b,
-                          uint64_t potential_callee_return_address);
+void event_block_enter(translation_block* b,
+                       uint64_t potential_callee_return_address);
+
+/* instruction @pc, belonging to block @b loads/stores @size bytes at given
+ * @address. (event must come AFTER event_block_enter for current block and
+ * BEFORE event_block_enter for next block). is_load determines if it is a
+ * store or a load.
+ * NOTE: access must be reported in the order of instructions execution. */
+void event_memory_access(translation_block* b, uint64_t pc, uint64_t address,
+                         uint32_t size, bool is_load);
 
 /* cpus are stopped (end of program) */
 void event_cpus_stopped(void);

@@ -46,7 +46,9 @@ public:
         }
     }
 
-    void on_instruction_exec(translation_block&, instruction& i) override
+    void on_instruction_exec(
+        translation_block&, instruction& i,
+        const std::vector<memory_access>& memory_accesses) override
     {
         fprintf(output(), "exec 0x%" PRIx64 " %s\n", i.pc(), i.str().c_str());
         const source_line* line = i.line();
@@ -55,6 +57,9 @@ public:
                     line->file().path().c_str(), line->number(),
                     line->line().c_str());
         }
+        for (auto& m : memory_accesses)
+            fprintf(output(), "%s %u bytes @%" PRIx64 "\n",
+                    m.is_load ? "load" : "store", m.size, m.address);
     }
 
     void on_block_exit(translation_block& b) override

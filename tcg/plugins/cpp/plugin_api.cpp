@@ -121,37 +121,51 @@ private:
     translation_block* tb_;
 };
 
-/* keeps track of block chaining.
- * maintain a call_stack for all blocks executed. */
-class block_chain_recorder
+/* keeps track of block execution.
+ * maintain a call_stack for all blocks executed.
+ * maintain memory accesses for current block.
+ * one block_execution_recorder is used per thread.
+ * This object is stateful, for current block executing. */
+class block_execution_recorder
 {
 public:
-    block_chain_recorder() { call_stack_.reserve(1000); }
+    block_execution_recorder() { call_stack_.reserve(1000); }
 
     /* report execution of a block @b.
-     * If this is a call, we report it in @caller.
      * @potential_callee_return_address is address where to return in callee. If
      * it matches something we have on the stack, we will detect a call.
      * @is_block_a_symbol_entry reports if a symbol exists for block pc. It
      * allows to detect calls that are jmp (like in PLT for instance).
      */
-    translation_block::block_transition_type
-    on_block_exec(translation_block& b, translation_block*& caller,
-                  uint64_t potential_callee_return_address,
-                  bool is_block_a_symbol_entry)
+    void on_block_exec(translation_block& b,
+                       uint64_t potential_callee_return_address,
+                       bool is_block_a_symbol_entry)
     {
         last_executed_block_ = current_block_;
         current_block_ = &b;
 
-        return track_stack(b, last_executed_block_, caller,
-                           potential_callee_return_address,
-                           is_block_a_symbol_entry);
+        memory_accesses_.clear();
+
+        transition_type_ = track_stack(b, last_executed_block_, caller_,
+                                       potential_callee_return_address,
+                                       is_block_a_symbol_entry);
+    }
+
+    /* caller that reached current symbol */
+    translation_block* get_caller() const { return caller_; }
+
+    /* how current block was reached */
+    translation_block::block_transition_type get_transition_type() const
+    {
+        return transition_type_;
     }
 
     translation_block* get_last_block_executed() const
     {
         return last_executed_block_;
     }
+
+    translation_block* get_current_block() const { return current_block_; }
 
     call_stack get_call_stack() const
     {
@@ -163,7 +177,24 @@ public:
         return cs;
     }
 
+    const std::vector<memory_access>& get_memory_accesses() const
+    {
+        return memory_accesses_;
+    }
+
     uint64_t get_current_symbol_pc() { return current_symbol_pc_; }
+
+    void add_memory_access(const translation_block& b, uint64_t pc,
+                           uint64_t address, uint32_t size, bool is_load)
+    {
+        if (&b != current_block_) {
+            fprintf(stderr,
+                    "TCG_PLUGIN_CPP: ERROR - reporting memory access for "
+                    "unknown block\n");
+            exit(EXIT_FAILURE);
+        }
+        memory_accesses_.emplace_back(pc, address, size, is_load);
+    }
 
 private:
     translation_block::block_transition_type
@@ -224,10 +255,14 @@ private:
         return tt::CALL;
     }
 
+    std::vector<memory_access> memory_accesses_;
     std::vector<call_stack_entry> call_stack_;
     translation_block* last_executed_block_ = nullptr;
     translation_block* current_block_ = nullptr;
     uint64_t current_symbol_pc_ = 0;
+    translation_block* caller_ = nullptr;
+    translation_block::block_transition_type transition_type_ =
+        translation_block::block_transition_type::START;
 };
 
 // manager for plugins
@@ -302,7 +337,7 @@ public:
 
     call_stack get_call_stack()
     {
-        return get_current_thread_bc().get_call_stack();
+        return get_current_thread_be().get_call_stack();
     }
 
     // register plugin @p as available
@@ -325,17 +360,18 @@ public:
         }
     }
 
-    block_chain_recorder& get_current_thread_bc()
-    {
-        return bc_recorders_[std::this_thread::get_id()];
-    }
-
-    void event_block_executed(translation_block& b,
-                              uint64_t potential_callee_return_address)
+    void event_block_enter(translation_block& b,
+                           uint64_t potential_callee_return_address)
     {
         std::lock_guard<std::mutex> mt_lock(mt_mutex_);
 
-        translation_block* caller = nullptr;
+        /* report previous block. By reporting only now, we can record memory
+         * access and other information that are only available during
+         * execution.  */
+        block_execution_recorder& be_recorder = get_current_thread_be();
+        block_was_executed(be_recorder);
+
+        /* now we handle next block */
         bool is_block_a_symbol_entry = false;
         if (b.current_symbol())
             is_block_a_symbol_entry = b.current_symbol()->pc() == b.pc();
@@ -343,14 +379,11 @@ public:
             is_block_a_symbol_entry = symbol_exists(b.pc());
 
         /* maintain call stack and detect call/ret */
-        block_chain_recorder& bc_recorder = get_current_thread_bc();
-        translation_block::block_transition_type transition_type =
-            bc_recorder.on_block_exec(b, caller,
-                                      potential_callee_return_address,
-                                      is_block_a_symbol_entry);
+        be_recorder.on_block_exec(b, potential_callee_return_address,
+                                  is_block_a_symbol_entry);
 
         /* correct symbol by using call stack */
-        uint64_t current_symbol_pc = bc_recorder.get_current_symbol_pc();
+        uint64_t current_symbol_pc = be_recorder.get_current_symbol_pc();
         if (!b.current_symbol() ||
             b.current_symbol()->pc() != current_symbol_pc) // correct symbol
         {
@@ -363,29 +396,21 @@ public:
         if (b.current_symbol()->pc() == b.pc()) {
             b.current_symbol()->set_code(b.code());
         }
+    }
 
-        /* block transition */
-        for (const auto& p : plugins_) {
-            p->on_block_transition(b, bc_recorder.get_last_block_executed(),
-                                   transition_type, caller);
-        }
-
-        /* block execution */
-        for (const auto& p : plugins_) {
-            p->on_block_enter(b);
-        }
-        for (const auto& i : b.instructions()) {
-            for (const auto& p : plugins_) {
-                p->on_instruction_exec(b, *i);
-            }
-        }
-        for (const auto& p : plugins_) {
-            p->on_block_exit(b);
-        }
+    /* access to memory. lockless event. */
+    void event_memory_access(translation_block& b, uint64_t pc,
+                             uint64_t address, uint32_t size, bool is_load)
+    {
+        get_current_thread_be().add_memory_access(b, pc, address, size,
+                                                  is_load);
     }
 
     void event_cpus_stopped()
     {
+        // report last block executed, that was exit */
+        block_was_executed(get_current_thread_be());
+
         fprintf(stderr_out_, "TCG_PLUGIN_CPP: event_cpus_stopped\n");
         for (const auto& p : plugins_) {
             p->on_program_end();
@@ -397,6 +422,52 @@ public:
 
 private:
     plugin_manager() {}
+
+    block_execution_recorder& get_current_thread_be()
+    {
+        static thread_local block_execution_recorder& bc =
+            be_recorders_[std::this_thread::get_id()];
+        return bc;
+    }
+
+    // called after block was executed
+    void block_was_executed(block_execution_recorder& be)
+    {
+        translation_block* current = be.get_current_block();
+        if (!current) /* no block was executed */
+            return;
+
+        translation_block& b = *current;
+        /* block transition */
+        for (const auto& p : plugins_) {
+            p->on_block_transition(b, be.get_last_block_executed(),
+                                   be.get_transition_type(), be.get_caller());
+        }
+
+        /* block execution */
+        for (const auto& p : plugins_) {
+            p->on_block_enter(b);
+        }
+
+        /* get memory accesses for current block */
+        const auto& mem_accesses = be.get_memory_accesses();
+        auto mem_it = mem_accesses.begin();
+
+        std::vector<memory_access> reported_accesses;
+        for (const auto& i : b.instructions()) {
+            /* copy accesses related to current instruction */
+            while (mem_it != mem_accesses.end() && mem_it->pc == i->pc())
+                reported_accesses.emplace_back(*(mem_it++));
+
+            for (const auto& p : plugins_) {
+                p->on_instruction_exec(b, *i, reported_accesses);
+            }
+            reported_accesses.clear();
+        }
+        for (const auto& p : plugins_) {
+            p->on_block_exit(b);
+        }
+    }
 
     // get or create a binary file
     binary_file& get_binary_file(const std::string& path, uint64_t load_address)
@@ -687,7 +758,7 @@ private:
     std::map<std::string /* name */, plugin*> available_plugins_;
     std::vector<plugin*> plugins_; /* active */
     static const std::string env_var_plugins_name_;
-    std::unordered_map<std::thread::id, block_chain_recorder> bc_recorders_;
+    std::unordered_map<std::thread::id, block_execution_recorder> be_recorders_;
     std::mutex mt_mutex_;
 };
 
@@ -741,11 +812,17 @@ translation_block* get_translation_block(uint64_t pc, const uint8_t* code,
     return &b;
 }
 
-void event_block_executed(translation_block* b,
-                          uint64_t potential_callee_return_address)
+void event_block_enter(translation_block* b,
+                       uint64_t potential_callee_return_address)
 {
-    plugin_manager::get().event_block_executed(*b,
-                                               potential_callee_return_address);
+    plugin_manager::get().event_block_enter(*b,
+                                            potential_callee_return_address);
+}
+
+void event_memory_access(translation_block* b, uint64_t pc, uint64_t address,
+                         uint32_t size, bool is_load)
+{
+    plugin_manager::get().event_memory_access(*b, pc, address, size, is_load);
 }
 
 void event_cpus_stopped(void)

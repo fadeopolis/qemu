@@ -13,12 +13,22 @@ public:
     {
     }
 
-    void on_instruction_exec(translation_block&, instruction& i) override
+    void
+    on_instruction_exec(translation_block&, instruction& i,
+                        const std::vector<memory_access>& mem_accesses) override
     {
         /* we could count only block execution, and at the end summarizes
          * instructions for each of them, much more optimized */
         const auto& cs = i.capstone_inst();
         ++instructions_count_[cs.id];
+
+        for (auto& m : mem_accesses) {
+            if (m.is_load) {
+                read_bytes += m.size;
+            } else {
+                written_bytes += m.size;
+            }
+        }
     }
 
     void on_program_end() override
@@ -28,6 +38,9 @@ public:
             [](auto value, const auto& p) { return value + p.second; });
 
         fprintf(output(), "executed %lu instructions\n", total);
+
+        fprintf(output(), "read %lu bytes\n", read_bytes);
+        fprintf(output(), "written %lu bytes\n", written_bytes);
 
         std::vector<std::pair<uint64_t, uint64_t>> vec_inst;
 
@@ -52,6 +65,8 @@ public:
 private:
     std::unordered_map<uint64_t /* id */, uint64_t /* count */>
         instructions_count_;
+    uint64_t read_bytes = 0;
+    uint64_t written_bytes = 0;
 };
 
 REGISTER_PLUGIN(plugin_count_instructions);

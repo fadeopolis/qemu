@@ -14,6 +14,21 @@ class source_file;
 class binary_file;
 class translation_block;
 
+/* represent access (from a given @pc) to @address of @size bytes.
+ * If @is_load, it is a load, else, it is a store. */
+class memory_access
+{
+public:
+    memory_access(uint64_t pc, uint64_t address, uint32_t size, bool is_load)
+        : pc(pc), address(address), size(size), is_load(is_load)
+    {
+    }
+    const uint64_t pc;
+    const uint64_t address;
+    const uint32_t size;
+    const bool is_load;
+};
+
 class source_line
 {
 public:
@@ -236,8 +251,15 @@ public:
         (void)type;
         (void)return_original_caller_tb;
     }
+
     virtual void on_block_enter(translation_block&) {}
-    virtual void on_instruction_exec(translation_block&, instruction&) {}
+
+    virtual void
+    on_instruction_exec(translation_block&, instruction&,
+                        const std::vector<memory_access>& memory_accesses)
+    {
+        (void)memory_accesses;
+    }
     virtual void on_block_exit(translation_block&) {}
     virtual void on_program_end() {}
     const std::string& name() const { return name_; }
