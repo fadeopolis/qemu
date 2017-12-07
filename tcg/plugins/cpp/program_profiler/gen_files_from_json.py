@@ -167,8 +167,8 @@ def generate_index(symbols, call_stacks, original_json_input, output_dir,
         if not dot_name:
             dot_name = pc
         dot.node(str(id), label=dot_name, URL=sym_url)
-        for succ in s['successors']:
-            dot.edge(str(id), str(succ['id']))
+        for called in s['calls']:
+            dot.edge(str(id), str(called['id']))
 
     log().info('generate index file %s', output_file)
     out = j2env.get_template(template_file).render(
@@ -289,8 +289,8 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
             res.append(data)
         return res
 
-    successors = list_builder(sym['successors'])
-    predecessors = list_builder(sym['predecessors'])
+    calls = list_builder(sym['calls'])
+    callers = list_builder(sym['callers'])
 
     progress_str = '[' + str(sym_number) + '/' + str(sym_total_number) + ']'
     log().info('%s generate symbol file %s', progress_str, output_file)
@@ -304,8 +304,8 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
         sym_size=size,
         sym_file=orig_file,
         sym_src=src,
-        sym_successors=successors,
-        sym_predecessors=predecessors,
+        sym_callers=callers,
+        sym_calls=calls,
         sources=sources,
         assembly=assembly)
     with open(output_file, 'w') as f:
@@ -344,9 +344,7 @@ def generate_files(input_json, output_dir):
     for s in j['symbols']:
         if not s['name']:
             s['name'] = hex(s['pc'])
-        s['successors'] = [
-            symbols_dict[succ_id] for succ_id in s['successors']
-        ]
+        s['calls'] = [symbols_dict[called_id] for called_id in s['calls']]
         s['basic_blocks'] = [
             blocks_dict[block_id] for block_id in s['basic_blocks']
         ]
@@ -358,13 +356,13 @@ def generate_files(input_json, output_dir):
     for cs in j['call_stacks']:
         cs['symbols'] = [symbols_dict[sym_id] for sym_id in cs['symbols']]
 
-    # compute predecessors
+    # compute callers
     for s in j['symbols']:
-        s.update({'predecessors': []})
+        s.update({'callers': []})
 
     for s in j['symbols']:
-        for succ in s['successors']:
-            succ['predecessors'].append(s)
+        for called in s['calls']:
+            called['callers'].append(s)
 
     generate_index(j['symbols'], j['call_stacks'], 'data.json', output_dir,
                    output_index, j2env, 'index.html')

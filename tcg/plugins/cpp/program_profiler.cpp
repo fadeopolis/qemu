@@ -416,7 +416,7 @@ static json json_one_block(const basic_block& bb)
 static json json_one_symbol(
     const symbol& s, std::vector<basic_block*>& sym_blocks,
     const std::vector<instruction*>& instructions,
-    const std::unordered_set<symbol*>& successors,
+    const std::unordered_set<symbol*>& calls,
     const std::unordered_set<const source_line*>& covered_source_lines,
     const std::unordered_set<instruction*>& covered_instructions)
 {
@@ -437,11 +437,11 @@ static json json_one_symbol(
         j_src.emplace_back(
             json_one_source_line(s, covered_source_lines.count(s) != 0));
 
-    json j_succ = json::array();
-    auto vec_succ = get_vec_from_unordered_set(successors);
-    sort_vec_elem_with_id(vec_succ);
-    for (const auto* succ : vec_succ) {
-        j_succ.emplace_back(succ->id());
+    json j_calls = json::array();
+    auto vec_calls = get_vec_from_unordered_set(calls);
+    sort_vec_elem_with_id(vec_calls);
+    for (const auto* calls : vec_calls) {
+        j_calls.emplace_back(calls->id());
     }
 
     json j_name;
@@ -461,7 +461,7 @@ static json json_one_symbol(
               {"name", j_name},
               {"instructions", j_instructions},
               {"basic_blocks", j_blocks},
-              {"successors", j_succ},
+              {"calls", j_calls},
               {"src", j_src}};
     return j;
 }
@@ -653,8 +653,7 @@ private:
     json json_symbols(
         std::unordered_map<symbol*, std::unordered_set<basic_block*>>&
             symbols_to_blocks,
-        std::unordered_map<symbol*, std::unordered_set<symbol*>>&
-            symbols_successors,
+        std::unordered_map<symbol*, std::unordered_set<symbol*>>& symbols_calls,
         const std::unordered_set<const source_line*>& covered_source_lines,
         const std::unordered_set<instruction*>& covered_instructions)
     {
@@ -691,10 +690,10 @@ private:
                 }
             }
 
-            std::unordered_set<symbol*> successors = symbols_successors[&s];
+            std::unordered_set<symbol*> calls = symbols_calls[&s];
 
-            j.emplace_back(json_one_symbol(s, sym_blocks, instructions,
-                                           successors, covered_source_lines,
+            j.emplace_back(json_one_symbol(s, sym_blocks, instructions, calls,
+                                           covered_source_lines,
                                            covered_instructions));
         }
 
@@ -711,17 +710,16 @@ private:
         std::unordered_set<instruction*> covered_instructions;
         std::unordered_map<symbol*, std::unordered_set<basic_block*>>
             symbols_to_blocks;
-        std::unordered_map<symbol*, std::unordered_set<symbol*>>
-            symbols_successors;
+        std::unordered_map<symbol*, std::unordered_set<symbol*>> symbols_calls;
 
         for (auto* b : blocks) {
             for (symbol* b_sym : b->symbols()) {
                 symbols_to_blocks[b_sym].emplace(b);
                 for (auto* succ : b->successors()) {
-                    for (symbol* succ_sym : succ->symbols()) {
-                        if (b_sym == succ_sym)
+                    for (symbol* called_sym : succ->symbols()) {
+                        if (b_sym == called_sym)
                             continue;
-                        symbols_successors[b_sym].emplace(succ_sym);
+                        symbols_calls[b_sym].emplace(called_sym);
                     }
                 }
             }
@@ -735,7 +733,7 @@ private:
             covered_source_lines.emplace(src);
         }
 
-        j["symbols"] = json_symbols(symbols_to_blocks, symbols_successors,
+        j["symbols"] = json_symbols(symbols_to_blocks, symbols_calls,
                                     covered_source_lines, covered_instructions);
 
         j["call_stacks"] = json_call_stacks();

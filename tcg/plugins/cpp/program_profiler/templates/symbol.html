@@ -11,17 +11,17 @@
         <p>file: {{sym_file}}</p>
         <p>src: {{sym_src}}</p>
         <p>
-        predecessors:
+        was called by:
         <ul>
-            {% for s in sym_predecessors %}
+            {% for s in sym_callers %}
             <li><a href="{{s.url}}">{{s.name}}</a></li>
             {% endfor %}
         </ul>
         </p>
         <p>
-        successors:
+        calls:
         <ul>
-            {% for s in sym_successors %}
+            {% for s in sym_calls %}
             <li><a href="{{s.url}}">{{s.name}}</a></li>
             {% endfor %}
         </ul>
