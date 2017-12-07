@@ -183,8 +183,9 @@ public:
     };
 
     translation_block(uint64_t id, uint64_t pc, size_t size,
-                      const uint8_t* code)
-        : id_(id), pc_(pc), size_(size), code_(code), current_symbol_(nullptr)
+                      const uint8_t* code, binary_file& file)
+        : id_(id), pc_(pc), size_(size), code_(code), file_(file),
+          current_symbol_(nullptr)
     {
     }
 
@@ -192,6 +193,7 @@ public:
     uint64_t pc() const { return pc_; }
     size_t size() const { return size_; }
     const uint8_t* code() const { return code_; }
+    binary_file& file() const { return file_; }
     symbol* current_symbol() const { return current_symbol_; }
     const std::unordered_set<symbol*>& symbols() const { return symbols_; }
     const std::vector<instruction*>& instructions() const
@@ -217,6 +219,7 @@ private:
     uint64_t pc_;
     size_t size_;
     const uint8_t* code_;
+    binary_file& file_;
     symbol* current_symbol_;
     std::unordered_set<symbol*> symbols_;
     std::vector<instruction*> instructions_;
@@ -265,9 +268,11 @@ public:
     const std::string& name() const { return name_; }
     const std::string& description() const { return description_; }
 
+    // get or create symbol @pc in @file
+    static symbol& get_symbol(uint64_t pc, binary_file& file);
 protected:
     // output stream
-    FILE* output() const;
+    static FILE* output();
     // get or create an instruction
     static instruction&
     get_instruction(uint64_t pc, instruction::capstone_inst_ptr capstone_inst);

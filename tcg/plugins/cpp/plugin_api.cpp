@@ -105,19 +105,19 @@ csh instruction::get_capstone_handle()
 class call_stack_entry
 {
 public:
-    call_stack_entry(const instruction* caller, uint64_t expected_next_pc,
+    call_stack_entry(const instruction* caller, uint64_t return_address,
                      translation_block* tb)
-        : caller_(caller), expected_next_pc_(expected_next_pc), tb_(tb)
+        : caller_(caller), return_address_(return_address), tb_(tb)
     {
     }
 
     const instruction* caller() const { return caller_; }
-    uint64_t expected_next_pc() const { return expected_next_pc_; }
+    uint64_t return_address() const { return return_address_; }
     translation_block* tb() const { return tb_; }
 
 private:
     const instruction* caller_;
-    uint64_t expected_next_pc_;
+    uint64_t return_address_;
     translation_block* tb_;
 };
 
@@ -125,7 +125,7 @@ private:
  * maintain a call_stack for all blocks executed.
  * maintain memory accesses for current block.
  * one block_execution_recorder is used per thread.
- * This object is stateful, for current block executing. */
+ * This object is stateful, for current block/thread executing. */
 class block_execution_recorder
 {
 public:
@@ -134,21 +134,15 @@ public:
     /* report execution of a block @b.
      * @potential_callee_return_address is address where to return in callee. If
      * it matches something we have on the stack, we will detect a call.
-     * @is_block_a_symbol_entry reports if a symbol exists for block pc. It
-     * allows to detect calls that are jmp (like in PLT for instance).
      */
     void on_block_exec(translation_block& b,
-                       uint64_t potential_callee_return_address,
-                       bool is_block_a_symbol_entry)
+                       uint64_t potential_callee_return_address)
     {
         last_executed_block_ = current_block_;
         current_block_ = &b;
 
         memory_accesses_.clear();
-
-        transition_type_ = track_stack(b, last_executed_block_, caller_,
-                                       potential_callee_return_address,
-                                       is_block_a_symbol_entry);
+        transition_type_ = track_stack(b, potential_callee_return_address);
     }
 
     /* caller that reached current symbol */
@@ -171,9 +165,8 @@ public:
     {
         call_stack cs;
         cs.reserve(call_stack_.size() + 1); /* +1 to push current instruction */
-        for (const auto& cs_entry : call_stack_) {
+        for (const auto& cs_entry : call_stack_)
             cs.emplace_back(cs_entry.caller());
-        }
         return cs;
     }
 
@@ -182,7 +175,7 @@ public:
         return memory_accesses_;
     }
 
-    uint64_t get_current_symbol_pc() { return current_symbol_pc_; }
+    symbol* get_current_symbol() const { return current_symbol_; }
 
     void add_memory_access(const translation_block& b, uint64_t pc,
                            uint64_t address, uint32_t size, bool is_load)
@@ -197,61 +190,54 @@ public:
     }
 
 private:
-    translation_block::block_transition_type
-    track_stack(translation_block& b, translation_block* last_executed_block,
-                translation_block*& caller,
-                uint64_t potential_callee_return_address,
-                bool is_block_a_symbol_entry)
+    void on_call(symbol& callee, uint64_t return_address)
     {
-        uint64_t current_pc = b.pc();
+        caller_ = last_executed_block_;
+        current_symbol_ = &callee;
+        call_stack_.emplace_back(last_executed_block_->instructions().back(),
+                                 return_address, last_executed_block_);
+    }
 
+    translation_block::block_transition_type
+    track_stack(translation_block& b, uint64_t potential_callee_return_address)
+    {
         using tt = translation_block::block_transition_type;
 
-        if (!last_executed_block) { /* first time */
-            current_symbol_pc_ = current_pc;
+        if (!last_executed_block_) { /* first time */
+            current_symbol_ = &plugin::get_symbol(b.pc(), b.file());
             return tt::START;
         }
 
-        uint64_t expected_block_pc =
-            last_executed_block->pc() + last_executed_block->size();
+        uint64_t expected_next_block_pc =
+            last_executed_block_->pc() + last_executed_block_->size();
 
-        if (expected_block_pc == current_pc) /* linear execution */
+        if (expected_next_block_pc == b.pc()) /* linear execution */
             return tt::SEQUENTIAL;
 
-        auto on_call = [&]() {
-            caller = last_executed_block;
-            current_symbol_pc_ = current_pc;
-            call_stack_.emplace_back(last_executed_block->instructions().back(),
-                                     expected_block_pc, last_executed_block);
-        };
-
-        if (is_block_a_symbol_entry) /* we have a call */
-        {
-            on_call();
+        // check if current symbol is a symbol entry point
+        if (b.current_symbol() && b.current_symbol()->pc() == b.pc()) {
+            on_call(*b.current_symbol(), expected_next_block_pc);
             return tt::CALL;
         }
 
         /* check if we returned, walk the stack to find expected pc */
         for (auto it = call_stack_.end(); it != call_stack_.begin(); --it) {
-            uint64_t expected_pc = it->expected_next_pc();
-            if (expected_pc == current_pc) /* this is a function return */
+            if (it->return_address() == b.pc()) /* this is a function return */
             {
-                caller = it->tb();
-                current_symbol_pc_ = caller->current_symbol()->pc();
+                caller_ = it->tb();
+                current_symbol_ = caller_->current_symbol();
                 call_stack_.erase(it, call_stack_.end());
                 return tt::RETURN;
             }
         }
 
-        uint64_t return_address = potential_callee_return_address;
-
-        if (return_address != expected_block_pc) {
+        if (expected_next_block_pc != potential_callee_return_address) {
             /* this is a simple jump */
             return tt::JUMP;
         }
 
         /* this is a call, because return address was stored */
-        on_call();
+        on_call(plugin::get_symbol(b.pc(), b.file()), expected_next_block_pc);
         return tt::CALL;
     }
 
@@ -259,7 +245,7 @@ private:
     std::vector<call_stack_entry> call_stack_;
     translation_block* last_executed_block_ = nullptr;
     translation_block* current_block_ = nullptr;
-    uint64_t current_symbol_pc_ = 0;
+    symbol* current_symbol_ = nullptr;
     translation_block* caller_ = nullptr;
     translation_block::block_transition_type transition_type_ =
         translation_block::block_transition_type::START;
@@ -291,18 +277,17 @@ public:
             return *it->second;
         }
 
-        binary_file& file =
-            get_binary_file(binary_file_path, binary_file_load_address);
-        binary_files_mapping_[pc] = &file;
-
         uint64_t new_id = block_id_;
         ++block_id_;
+
+        binary_file& file =
+            get_binary_file(binary_file_path, binary_file_load_address);
 
         translation_block& b =
             blocks_
                 .emplace(std::piecewise_construct,
                          std::forward_as_tuple(new_id),
-                         std::forward_as_tuple(new_id, pc, size, code))
+                         std::forward_as_tuple(new_id, pc, size, code, file))
                 .first->second;
 
         blocks_mapping_.emplace(pc, &b);
@@ -372,30 +357,23 @@ public:
         block_was_executed(be_recorder);
 
         /* now we handle next block */
-        bool is_block_a_symbol_entry = false;
-        if (b.current_symbol())
-            is_block_a_symbol_entry = b.current_symbol()->pc() == b.pc();
-        else
-            is_block_a_symbol_entry = symbol_exists(b.pc());
+
+        /* check if block is not entry to a known one */
+        if (!b.current_symbol()) {
+            symbol* existing = get_existing_symbol(b.pc());
+            if (existing)
+                b.set_current_symbol(*existing);
+        }
 
         /* maintain call stack and detect call/ret */
-        be_recorder.on_block_exec(b, potential_callee_return_address,
-                                  is_block_a_symbol_entry);
+        be_recorder.on_block_exec(b, potential_callee_return_address);
 
         /* correct symbol by using call stack */
-        uint64_t current_symbol_pc = be_recorder.get_current_symbol_pc();
-        if (!b.current_symbol() ||
-            b.current_symbol()->pc() != current_symbol_pc) // correct symbol
-        {
-            binary_file& file = *binary_files_mapping_[current_symbol_pc];
-            symbol& s = get_symbol("", current_symbol_pc, 0, nullptr, file);
-            b.set_current_symbol(s);
-        }
+        b.set_current_symbol(*be_recorder.get_current_symbol());
 
         /* set symbol code if this block is the entry point */
-        if (b.current_symbol()->pc() == b.pc()) {
+        if (b.current_symbol()->pc() == b.pc())
             b.current_symbol()->set_code(b.code());
-        }
     }
 
     /* access to memory. lockless event. */
@@ -420,6 +398,29 @@ public:
     FILE* get_output() const { return out_; }
     void set_output(FILE* out) { out_ = out; }
 
+    // get or create a symbol (adds it to its file)
+    symbol& get_symbol(const std::string& name, uint64_t pc, size_t size,
+                       const uint8_t* code, binary_file& file)
+    {
+        auto it = symbols_mapping_.find(pc);
+        if (it != symbols_mapping_.end()) {
+            return *it->second;
+        }
+
+        uint64_t new_id = symbol_id_;
+        ++symbol_id_;
+
+        symbol& s =
+            symbols_
+                .emplace(
+                    std::piecewise_construct, std::forward_as_tuple(new_id),
+                    std::forward_as_tuple(new_id, name, pc, size, code, file))
+                .first->second;
+        symbols_mapping_.emplace(pc, &s);
+        file.add_symbol(s);
+        return s;
+    }
+
 private:
     plugin_manager() {}
 
@@ -431,7 +432,7 @@ private:
     }
 
     // called after block was executed
-    void block_was_executed(block_execution_recorder& be)
+    void block_was_executed(const block_execution_recorder& be)
     {
         translation_block* current = be.get_current_block();
         if (!current) /* no block was executed */
@@ -511,36 +512,13 @@ private:
         return file;
     }
 
-    // returns true if a symbol exists @pc
-    bool symbol_exists(uint64_t pc)
+    // returns existing symbol @pc
+    symbol* get_existing_symbol(uint64_t pc)
     {
         auto it = symbols_mapping_.find(pc);
         if (it != symbols_mapping_.end())
-            return true;
-        return false;
-    }
-
-    // get or create a symbol (adds it to its file)
-    symbol& get_symbol(const std::string& name, uint64_t pc, size_t size,
-                       const uint8_t* code, binary_file& file)
-    {
-        auto it = symbols_mapping_.find(pc);
-        if (it != symbols_mapping_.end()) {
-            return *it->second;
-        }
-
-        uint64_t new_id = symbol_id_;
-        ++symbol_id_;
-
-        symbol& s =
-            symbols_
-                .emplace(
-                    std::piecewise_construct, std::forward_as_tuple(new_id),
-                    std::forward_as_tuple(new_id, name, pc, size, code, file))
-                .first->second;
-        symbols_mapping_.emplace(pc, &s);
-        file.add_symbol(s);
-        return s;
+            return it->second;
+        return nullptr;
     }
 
     // disassemble instructions of a given block @b and and them to it
@@ -750,7 +728,6 @@ private:
     std::unordered_map<uint64_t /* pc */, instruction*> instructions_mapping_;
     std::unordered_map<uint64_t /* pc */, translation_block*> blocks_mapping_;
     std::unordered_map<uint64_t /* pc */, symbol*> symbols_mapping_;
-    std::unordered_map<uint64_t /* pc */, binary_file*> binary_files_mapping_;
 
     std::unordered_map<std::string /* name */, binary_file> binary_files_;
     std::unordered_map<std::string /* path */, source_file> source_files_;
@@ -770,6 +747,11 @@ instruction::capstone_inst_ptr instruction::get_new_capstone_instruction()
     return insn;
 }
 
+symbol& plugin::get_symbol(uint64_t pc, binary_file& file)
+{
+    return plugin_manager::get().get_symbol("", pc, 0, nullptr, file);
+}
+
 instruction&
 plugin::get_instruction(uint64_t pc,
                         instruction::capstone_inst_ptr capstone_inst)
@@ -782,7 +764,7 @@ call_stack plugin::get_call_stack()
     return plugin_manager::get().get_call_stack();
 }
 
-FILE* plugin::output() const
+FILE* plugin::output()
 {
     return plugin_manager::get().get_output();
 }
