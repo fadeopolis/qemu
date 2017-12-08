@@ -490,7 +490,8 @@ private:
                         "TCG_PLUGIN_CPP: WARNING - error reading ELF for "
                         "file %s: %s\n",
                         path.c_str(), error.c_str());
-            } else if (!read_dwarf(path, load_address, error)) {
+            } else if (!ignore_dwarf_ &&
+                       !read_dwarf(path, load_address, error)) {
                 fprintf(stderr_out_,
                         "TCG_PLUGIN_CPP: WARNING - error reading DWARF "
                         "for file %s: %s\n",
@@ -682,10 +683,18 @@ private:
             fprintf(stderr_out_, "- %s: %s\n", p.name().c_str(),
                     p.description().c_str());
         }
+        fprintf(stderr_out_, "\n");
+        fprintf(stderr_out_,
+                "you can ignore DWARF info by setting env var %s\n",
+                env_var_ignore_dwarf_.c_str());
     }
 
     void activate_plugins()
     {
+        ignore_dwarf_ = getenv(env_var_ignore_dwarf_.c_str()) != nullptr;
+        if (ignore_dwarf_)
+            fprintf(stderr_out_, "TCG_PLUGIN_CPP: ignoring dwarf infos");
+
         const char* plugins_list_str = getenv(env_var_plugins_name_.c_str());
 
         if (!plugins_list_str) {
@@ -734,7 +743,9 @@ private:
     std::unordered_map<uint64_t /* pc */, const source_line*> pc_to_lines_;
     std::map<std::string /* name */, plugin*> available_plugins_;
     std::vector<plugin*> plugins_; /* active */
+    static const std::string env_var_ignore_dwarf_;
     static const std::string env_var_plugins_name_;
+    bool ignore_dwarf_ = false;
     std::unordered_map<std::thread::id, block_execution_recorder> be_recorders_;
     std::mutex mt_mutex_;
 };
@@ -770,6 +781,8 @@ FILE* plugin::output()
 }
 
 const std::string plugin_manager::env_var_plugins_name_ = "TCG_PLUGIN_CPP";
+const std::string plugin_manager::env_var_ignore_dwarf_ =
+    "TCG_PLUGIN_CPP_IGNORE_DWARF";
 
 void plugin_init(FILE* out, enum architecture arch)
 {
