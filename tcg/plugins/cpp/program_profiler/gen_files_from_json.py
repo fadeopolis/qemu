@@ -314,7 +314,14 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
     svg_out = output_dot_file + '.svg'
     log().info('%s generate dot file %s', progress_str, output_dot_file)
     log().info('%s generate svg file %s', progress_str, svg_out)
-    dot.render(output_dot_file)
+    try:
+        dot.render(output_dot_file)
+    except:
+        logging.warning('DOT_FILE: error while generating it...')
+        try:
+            os.remove(svg_out)
+        except OSError:
+            pass
 
 
 def generate_files(input_json, output_dir):
