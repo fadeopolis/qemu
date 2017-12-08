@@ -19,6 +19,9 @@
 #include <unistd.h>
 #include <unordered_map>
 
+#include <sys/resource.h>
+#include <sys/time.h>
+
 // RAII object to use capstone
 class capstone
 {
@@ -393,6 +396,8 @@ public:
         for (const auto& p : plugins_) {
             p->on_program_end();
         }
+
+        print_memory_cpu_stats();
     }
 
     FILE* get_output() const { return out_; }
@@ -419,6 +424,27 @@ public:
         symbols_mapping_.emplace(pc, &s);
         file.add_symbol(s);
         return s;
+    }
+
+    void print_memory_cpu_stats()
+    {
+        /* print some statistics */
+        struct rusage usage;
+        std::memset(&usage, 0, sizeof(struct rusage));
+        getrusage(RUSAGE_SELF, &usage);
+
+        float user_time =
+            usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1000000.f;
+        float sys_time =
+            usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1000000.f;
+
+        fprintf(stderr_out_, "TCG_PLUGIN_CPP: memory usage: %luMB\n",
+                usage.ru_maxrss / 1024);
+        fprintf(stderr_out_, "TCG_PLUGIN_CPP: cpu user usage: %.2fs\n",
+                user_time);
+        fprintf(stderr_out_, "TCG_PLUGIN_CPP: cpu system usage: %.2fs\n",
+                sys_time);
+        fflush(stderr_out_);
     }
 
 private:

@@ -90,6 +90,8 @@ def setup_logger():
     _logger.setLevel(logging.DEBUG)
     stream_handler = logging.StreamHandler()
     stream_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("GEN_FILES: %(message)s")
+    stream_handler.setFormatter(formatter);
     _logger.addHandler(stream_handler)
 
 
