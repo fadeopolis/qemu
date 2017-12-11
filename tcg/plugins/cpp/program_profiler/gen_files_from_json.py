@@ -91,7 +91,7 @@ def setup_logger():
     stream_handler = logging.StreamHandler()
     stream_handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter("GEN_FILES: %(message)s")
-    stream_handler.setFormatter(formatter);
+    stream_handler.setFormatter(formatter)
     _logger.addHandler(stream_handler)
 
 
@@ -129,12 +129,38 @@ def get_symbol_name(s):
     return name
 
 
+def stats_for_symbol(s, stats):
+    num_times_called = s['num_times_called']
+    instructions_executed = s['instructions_executed']
+    instructions_executed_percentage = 0
+    if instructions_executed:
+        instructions_executed_percentage = 100.0 * instructions_executed / stats[
+            'instructions_executed']
+    bytes_read = s['bytes_read']
+    bytes_read_percentage = 0
+    if bytes_read:
+        bytes_read_percentage = 100.0 * bytes_read / stats['bytes_read']
+    bytes_written = s['bytes_written']
+    bytes_written_percentage = 0
+    if bytes_written:
+        bytes_written_percentage = 100.0 * bytes_written / stats[
+            'bytes_written']
+    return dict(
+        num_times_called=num_times_called,
+        instructions_executed=instructions_executed,
+        instructions_executed_percentage=instructions_executed_percentage,
+        bytes_read=bytes_read,
+        bytes_read_percentage=bytes_read_percentage,
+        bytes_written=bytes_written,
+        bytes_written_percentage=bytes_written_percentage)
+
+
 def get_symbol_url(s):
     return symbol_file_prefix + str(s['id']) + '.html'
 
 
-def generate_index(symbols, call_stacks, original_json_input, output_dir,
-                   output_file, j2env, template_file):
+def generate_index(symbols, stats, call_stacks, original_json_input,
+                   output_dir, output_file, j2env, template_file):
     flamegraph_file_name = output_file + '.flamegraph.txt'
     flamegraph_image_file_name = flamegraph_file_name + '.svg'
     flamegraph_file = os.path.join(output_dir, flamegraph_file_name)
@@ -154,6 +180,7 @@ def generate_index(symbols, call_stacks, original_json_input, output_dir,
         name = get_symbol_name(s)
         pc = hex(s['pc'])
         size = s['size']
+        num_times_called = s['num_times_called']
 
         src = get_symbol_src_start(s)
 
@@ -162,7 +189,13 @@ def generate_index(symbols, call_stacks, original_json_input, output_dir,
             binary = ''
 
         sym = dict(
-            name=name, pc=pc, size=size, src=src, binary=binary, url=sym_url)
+            name=name,
+            pc=pc,
+            size=size,
+            src=src,
+            binary=binary,
+            url=sym_url,
+            stats=stats_for_symbol(s, stats))
         syms.append(sym)
 
         dot_name = name
@@ -202,8 +235,8 @@ def generate_index(symbols, call_stacks, original_json_input, output_dir,
 
 
 @deadline(10)
-def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
-                         template_file, sym_number, sym_total_number):
+def generate_symbol_file(sym, stats, output_dir, output_file, index_file,
+                         j2env, template_file, sym_number, sym_total_number):
     output_dot_file_name = output_file + '.dot.txt'
     output_dot_file = os.path.join(output_dir, output_dot_file_name)
     output_file = os.path.join(output_dir, output_file)
@@ -309,7 +342,8 @@ def generate_symbol_file(sym, output_dir, output_file, index_file, j2env,
         sym_callers=callers,
         sym_calls=calls,
         sources=sources,
-        assembly=assembly)
+        assembly=assembly,
+        sym_stats=stats_for_symbol(sym, stats))
     with open(output_file, 'w') as f:
         f.write(out)
 
@@ -373,16 +407,17 @@ def generate_files(input_json, output_dir):
         for called in s['calls']:
             called['callers'].append(s)
 
-    generate_index(j['symbols'], j['call_stacks'], 'data.json', output_dir,
-                   output_index, j2env, 'index.html')
+    generate_index(j['symbols'], j['statistics'], j['call_stacks'],
+                   'data.json', output_dir, output_index, j2env, 'index.html')
 
     total_syms = len(j['symbols'])
     sym_number = 1
     for s in j['symbols']:
         output_file = symbol_file_prefix + str(s['id']) + '.html'
         try:
-            generate_symbol_file(s, output_dir, output_file, output_index,
-                                 j2env, 'symbol.html', sym_number, total_syms)
+            generate_symbol_file(s, j['statistics'], output_dir, output_file,
+                                 output_index, j2env, 'symbol.html',
+                                 sym_number, total_syms)
         except TimeoutException:
             logging.warning(
                 'SYMBOL_FILE: generate file was too long, skipping it...')

@@ -18,6 +18,13 @@
                 <th>size</th>
                 <th>binary file</th>
                 <th>source file</th>
+                <th>times called</th>
+                <th>inst exec</th>
+                <th>inst exec (%)</th>
+                <th>bytes read</th>
+                <th>bytes read (%)</th>
+                <th>bytes written</th>
+                <th>bytes written (%)</th>
             </tr>
         </thead>
         <tbody>
@@ -28,6 +35,13 @@
                 <td>{{s.size}}</td>
                 <td>{{s.binary}}</td>
                 <td>{{s.src}}</td>
+                <td>{{s.stats.num_times_called}}</td>
+                <td>{{s.stats.instructions_executed}}</td>
+                <td>{{s.stats.instructions_executed_percentage|round(2)}}%</td>
+                <td>{{s.stats.bytes_read}}</td>
+                <td>{{s.stats.bytes_read_percentage|round(2)}}%</td>
+                <td>{{s.stats.bytes_written}}</td>
+                <td>{{s.stats.bytes_written_percentage|round(2)}}%</td>
             </tr>
             {% endfor %}
         </tbody>

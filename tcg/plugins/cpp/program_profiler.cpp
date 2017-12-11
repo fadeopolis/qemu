@@ -11,6 +11,40 @@
 
 using json = nlohmann::json;
 
+/* statistics associated to one context of execution (symbol, loops, ...) */
+class execution_statistics
+{
+public:
+    void context_entered() { ++number_of_times_entered_; }
+
+    void block_was_executed(translation_block& b)
+    {
+        instructions_executed_ += b.instructions().size();
+    }
+
+    void memory_was_accessed(const memory_access& m)
+    {
+        if (m.is_load)
+            total_bytes_read_ += m.size;
+        else
+            total_bytes_written_ += m.size;
+    }
+
+    uint64_t instructions_executed() const { return instructions_executed_; }
+    uint64_t total_bytes_read() const { return total_bytes_read_; }
+    uint64_t total_bytes_written() const { return total_bytes_written_; }
+    uint64_t number_of_times_entered() const
+    {
+        return number_of_times_entered_;
+    }
+
+private:
+    uint64_t instructions_executed_ = 0;
+    uint64_t total_bytes_written_ = 0;
+    uint64_t total_bytes_read_ = 0;
+    uint64_t number_of_times_entered_ = 0;
+};
+
 /* as opposed to translation_block, basic_block offers guarantee that
  * any of its instructions are not in another basic_block (single entry/exit
  * point). Since a basic_block exists for each beginning of a translation_block,
@@ -418,7 +452,8 @@ static json json_one_symbol(
     const std::vector<instruction*>& instructions,
     const std::unordered_set<symbol*>& calls,
     const std::unordered_set<const source_line*>& covered_source_lines,
-    const std::unordered_set<instruction*>& covered_instructions)
+    const std::unordered_set<instruction*>& covered_instructions,
+    const execution_statistics& stats)
 {
     json j_instructions = json::array();
     for (instruction* i : instructions) {
@@ -462,7 +497,11 @@ static json json_one_symbol(
               {"instructions", j_instructions},
               {"basic_blocks", j_blocks},
               {"calls", j_calls},
-              {"src", j_src}};
+              {"src", j_src},
+              {"instructions_executed", stats.instructions_executed()},
+              {"num_times_called", stats.number_of_times_entered()},
+              {"bytes_written", stats.total_bytes_written()},
+              {"bytes_read", stats.total_bytes_read()}};
     return j;
 }
 
@@ -490,6 +529,7 @@ private:
     void on_block_enter(translation_block& b) override
     {
         flame_graph_.on_block_enter(b);
+        current_sym_stats_->block_was_executed(b);
     }
 
     void
@@ -500,6 +540,14 @@ private:
         using tt = translation_block::block_transition_type;
         using bt = basic_block::bb_type;
 
+        /* get stats for current symbol. It may change every block if we have a
+         * multi-thread program */
+        if (current_symbol_ != next.current_symbol()) {
+            current_symbol_ = next.current_symbol();
+            current_sym_stats_ = &symbols_stats_[current_symbol_];
+        }
+
+        /* treat transition */
         switch (type) {
         case tt::START:
             return;
@@ -514,6 +562,7 @@ private:
             set_block_type(caller_tb, bt::CALL);
             set_as_entry_point(callee_tb);
             add_transition(caller_tb, callee_tb);
+            current_sym_stats_->context_entered();
         } break;
         case tt::RETURN: {
             translation_block& caller_tb = *return_original_caller_tb;
@@ -524,6 +573,14 @@ private:
             add_transition(caller_tb, returned_tb);
         } break;
         }
+    }
+
+    virtual void on_instruction_exec(
+        translation_block&, instruction&,
+        const std::vector<memory_access>& memory_accesses) override
+    {
+        for (auto& m : memory_accesses)
+            current_sym_stats_->memory_was_accessed(m);
     }
 
     void set_as_entry_point(translation_block& b)
@@ -625,7 +682,7 @@ private:
         return blocks;
     }
 
-    json json_blocks(std::vector<basic_block*>& blocks)
+    json json_blocks(std::vector<basic_block*>& blocks) const
     {
         json j = json::array();
         sort_vec_elem_with_id(blocks);
@@ -638,7 +695,7 @@ private:
         return j;
     }
 
-    json json_call_stacks()
+    json json_call_stacks() const
     {
         json j = json::array();
 
@@ -647,6 +704,25 @@ private:
             auto count = p.second;
             j.emplace_back(json_one_call_stack(stack, count));
         }
+        return j;
+    }
+
+    json json_statistics() const
+    {
+        uint64_t total_instructions_executed = 0;
+        uint64_t total_bytes_read = 0;
+        uint64_t total_bytes_written = 0;
+
+        for (const auto& p : symbols_stats_) {
+            const execution_statistics& s = p.second;
+            total_instructions_executed += s.instructions_executed();
+            total_bytes_read += s.total_bytes_read();
+            total_bytes_written += s.total_bytes_written();
+        }
+
+        json j = {{"instructions_executed", total_instructions_executed},
+                  {"bytes_read", total_bytes_read},
+                  {"bytes_written", total_bytes_written}};
         return j;
     }
 
@@ -692,9 +768,11 @@ private:
 
             std::unordered_set<symbol*> calls = symbols_calls[&s];
 
+            execution_statistics& stats = symbols_stats_[&s];
+
             j.emplace_back(json_one_symbol(s, sym_blocks, instructions, calls,
                                            covered_source_lines,
-                                           covered_instructions));
+                                           covered_instructions, stats));
         }
 
         return j;
@@ -737,12 +815,16 @@ private:
                                     covered_source_lines, covered_instructions);
 
         j["call_stacks"] = json_call_stacks();
+        j["statistics"] = json_statistics();
         fprintf(output(), "%s\n", j.dump(4, ' ').c_str());
     }
 
     std::unordered_map<uint64_t /* id */, basic_block> blocks_;
     std::unordered_map<uint64_t /* pc */, basic_block*> blocks_map_;
     std::unordered_map<symbol*, basic_block*> entry_points_;
+    std::unordered_map<symbol*, execution_statistics> symbols_stats_;
+    symbol* current_symbol_ = nullptr;
+    execution_statistics* current_sym_stats_ = nullptr;
     plugin_cpu_flame_graph_profiler flame_graph_;
 };
 

@@ -33,7 +33,7 @@ public:
         ++call_stack_count_[sym_cs];
     }
 
-    const std::map<sym_call_stack, uint64_t>& call_stack_count()
+    const std::map<sym_call_stack, uint64_t>& call_stack_count() const
     {
         return call_stack_count_;
     }
