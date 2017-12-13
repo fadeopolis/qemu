@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <set>
 #include <sstream>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -520,16 +521,31 @@ class plugin_program_profiler : public plugin
 public:
     plugin_program_profiler()
         : plugin("program_profiler", "profile program "
-                                     "and outputs json description for it"),
-          flame_graph_(2000)
+                                     "and outputs json description for it")
     {
     }
 
 private:
+    struct per_thread
+    {
+        symbol* current_symbol_ = nullptr;
+        execution_statistics* current_sym_stats_ = nullptr;
+        plugin_cpu_flame_graph_profiler flame_graph_;
+    };
+
+    /* we keep each info per thread */
+    per_thread& thread_data()
+    {
+        static thread_local per_thread& tdata =
+            threads_data_[std::this_thread::get_id()];
+        return tdata;
+    }
+
     void on_block_enter(translation_block& b) override
     {
-        flame_graph_.on_block_enter(b);
-        current_sym_stats_->block_was_executed(b);
+        auto& td = thread_data();
+        td.flame_graph_.on_block_enter(b);
+        td.current_sym_stats_->block_was_executed(b);
     }
 
     void
@@ -540,11 +556,19 @@ private:
         using tt = translation_block::block_transition_type;
         using bt = basic_block::bb_type;
 
-        /* get stats for current symbol. It may change every block if we have a
-         * multi-thread program */
-        if (current_symbol_ != next.current_symbol()) {
-            current_symbol_ = next.current_symbol();
-            current_sym_stats_ = &symbols_stats_[current_symbol_];
+        auto& td = thread_data();
+
+        /* update per thread data */
+        switch (type) {
+        case tt::START:
+        case tt::CALL:
+        case tt::RETURN:
+            td.current_symbol_ = next.current_symbol();
+            td.current_sym_stats_ = &symbols_stats_[td.current_symbol_];
+            break;
+        case tt::SEQUENTIAL:
+        case tt::JUMP:
+            break;
         }
 
         /* treat transition */
@@ -562,7 +586,7 @@ private:
             set_block_type(caller_tb, bt::CALL);
             set_as_entry_point(callee_tb);
             add_transition(caller_tb, callee_tb);
-            current_sym_stats_->context_entered();
+            td.current_sym_stats_->context_entered();
         } break;
         case tt::RETURN: {
             translation_block& caller_tb = *return_original_caller_tb;
@@ -579,8 +603,9 @@ private:
         translation_block&, instruction&,
         const std::vector<memory_access>& memory_accesses) override
     {
+        auto& td = thread_data();
         for (auto& m : memory_accesses)
-            current_sym_stats_->memory_was_accessed(m);
+            td.current_sym_stats_->memory_was_accessed(m);
     }
 
     void set_as_entry_point(translation_block& b)
@@ -699,7 +724,19 @@ private:
     {
         json j = json::array();
 
-        for (auto& p : flame_graph_.call_stack_count()) {
+        /* make union of all call stacks in every thread */
+        std::map<plugin_cpu_flame_graph_profiler::sym_call_stack, uint64_t>
+            call_stacks;
+        for (auto& p_thread : threads_data_) {
+            auto& td = p_thread.second;
+            for (auto& p : td.flame_graph_.call_stack_count()) {
+                const auto& stack = p.first;
+                auto count = p.second;
+                call_stacks[stack] += count;
+            }
+        }
+
+        for (auto& p : call_stacks) {
             const auto& stack = p.first;
             auto count = p.second;
             j.emplace_back(json_one_call_stack(stack, count));
@@ -823,9 +860,7 @@ private:
     std::unordered_map<uint64_t /* pc */, basic_block*> blocks_map_;
     std::unordered_map<symbol*, basic_block*> entry_points_;
     std::unordered_map<symbol*, execution_statistics> symbols_stats_;
-    symbol* current_symbol_ = nullptr;
-    execution_statistics* current_sym_stats_ = nullptr;
-    plugin_cpu_flame_graph_profiler flame_graph_;
+    std::unordered_map<std::thread::id, per_thread> threads_data_;
 };
 
 REGISTER_PLUGIN(plugin_program_profiler);
