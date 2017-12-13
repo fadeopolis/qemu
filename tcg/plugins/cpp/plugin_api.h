@@ -1,6 +1,6 @@
 #pragma once
 
-#include <capstone/capstone.h>
+#include <capstone.h>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -255,21 +255,28 @@ public:
         (void)return_original_caller_tb;
     }
 
-    virtual void on_block_enter(translation_block&) {}
-
+    /* called for each block executed (after on_block_transition).
+     * Block was executed, and memory access made are @memory_accesses. This
+     * vector contains all accesses for this block. */
     virtual void
-    on_instruction_exec(translation_block&, instruction&,
-                        const std::vector<memory_access>& memory_accesses)
+    on_block_executed(translation_block&,
+                      const std::vector<memory_access>& memory_accesses)
     {
         (void)memory_accesses;
     }
-    virtual void on_block_exit(translation_block&) {}
     virtual void on_program_end() {}
+
     const std::string& name() const { return name_; }
     const std::string& description() const { return description_; }
 
+    // return memory access only for a single instruction
+    static std::vector<memory_access> memory_accesses_for_instruction(
+        const instruction& i,
+        const std::vector<memory_access>& memory_accesses);
+
     // get or create symbol @pc in @file
     static symbol& get_symbol(uint64_t pc, binary_file& file);
+
 protected:
     // output stream
     static FILE* output();

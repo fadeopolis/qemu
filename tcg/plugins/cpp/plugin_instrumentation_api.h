@@ -54,8 +54,7 @@ void event_block_enter(translation_block* b,
 /* instruction @pc, belonging to block @b loads/stores @size bytes at given
  * @address. (event must come AFTER event_block_enter for current block and
  * BEFORE event_block_enter for next block). is_load determines if it is a
- * store or a load.
- * NOTE: access must be reported in the order of instructions execution. */
+ * store or a load. */
 void event_memory_access(translation_block* b, uint64_t pc, uint64_t address,
                          uint32_t size, bool is_load);
 

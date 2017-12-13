@@ -12,23 +12,24 @@
 
 using json = nlohmann::json;
 
+class loop_and_call_stack
+{
+public:
+private:
+};
+
 /* statistics associated to one context of execution (symbol, loops, ...) */
 class execution_statistics
 {
 public:
     void context_entered() { ++number_of_times_entered_; }
 
-    void block_was_executed(translation_block& b)
+    void block_was_executed(translation_block& b,
+                            const std::vector<memory_access>& memory_accesses)
     {
         instructions_executed_ += b.instructions().size();
-    }
-
-    void memory_was_accessed(const memory_access& m)
-    {
-        if (m.is_load)
-            total_bytes_read_ += m.size;
-        else
-            total_bytes_written_ += m.size;
+        for (auto& m : memory_accesses)
+            memory_was_accessed(m);
     }
 
     uint64_t instructions_executed() const { return instructions_executed_; }
@@ -40,6 +41,14 @@ public:
     }
 
 private:
+    void memory_was_accessed(const memory_access& m)
+    {
+        if (m.is_load)
+            total_bytes_read_ += m.size;
+        else
+            total_bytes_written_ += m.size;
+    }
+
     uint64_t instructions_executed_ = 0;
     uint64_t total_bytes_written_ = 0;
     uint64_t total_bytes_read_ = 0;
@@ -70,6 +79,7 @@ public:
     const std::vector<basic_block*>& successors() const { return successors_; }
     bb_type type() const { return type_; }
     basic_block* loop_header() const { return loop_header_; }
+    bool is_loop_header() const { return is_loop_header_; }
     std::vector<instruction*> instructions() const
     {
         std::vector<instruction*> res;
@@ -123,6 +133,7 @@ public:
     }
 
     void set_type(bb_type type) { type_ = type; }
+    void mark_as_loop_header(bool is_lh) { is_loop_header_ = is_lh; }
     void set_loop_header(basic_block* lh) { loop_header_ = lh; }
 
 private:
@@ -130,6 +141,7 @@ private:
     size_t size_;
     bb_type type_ = bb_type::OTHER;
     std::vector<basic_block*> successors_;
+    bool is_loop_header_ = false;
     basic_block* loop_header_ = nullptr;
 };
 
@@ -169,8 +181,11 @@ static void identify_loops(basic_block* entry_block)
         basic_block* bb_ptr = p.first;
         if (!bb_ptr)
             continue;
+        bb_ptr->mark_as_loop_header(false); /* reset block */
         bb_loop_info& info = p.second;
         bb_ptr->set_loop_header(info.loop_header);
+        if (info.loop_header)
+            info.loop_header->mark_as_loop_header(true);
     }
 }
 
@@ -531,6 +546,7 @@ private:
         symbol* current_symbol_ = nullptr;
         execution_statistics* current_sym_stats_ = nullptr;
         plugin_cpu_flame_graph_profiler flame_graph_;
+        loop_and_call_stack stack_;
     };
 
     /* we keep each info per thread */
@@ -541,11 +557,13 @@ private:
         return tdata;
     }
 
-    void on_block_enter(translation_block& b) override
+    void on_block_executed(
+        translation_block& b,
+        const std::vector<memory_access>& memory_accesses) override
     {
         auto& td = thread_data();
-        td.flame_graph_.on_block_enter(b);
-        td.current_sym_stats_->block_was_executed(b);
+        td.flame_graph_.on_block_executed(b, memory_accesses);
+        td.current_sym_stats_->block_was_executed(b, memory_accesses);
     }
 
     void
@@ -597,15 +615,6 @@ private:
             add_transition(caller_tb, returned_tb);
         } break;
         }
-    }
-
-    virtual void on_instruction_exec(
-        translation_block&, instruction&,
-        const std::vector<memory_access>& memory_accesses) override
-    {
-        auto& td = thread_data();
-        for (auto& m : memory_accesses)
-            td.current_sym_stats_->memory_was_accessed(m);
     }
 
     void set_as_entry_point(translation_block& b)

@@ -14,13 +14,15 @@ public:
     }
 
     void
-    on_instruction_exec(translation_block&, instruction& i,
-                        const std::vector<memory_access>& mem_accesses) override
+    on_block_executed(translation_block& b,
+                      const std::vector<memory_access>& mem_accesses) override
     {
         /* we could count only block execution, and at the end summarizes
          * instructions for each of them, much more optimized */
-        const auto& cs = i.capstone_inst();
-        ++instructions_count_[cs.id];
+        for (auto& i : b.instructions()) {
+            const auto& cs = i->capstone_inst();
+            ++instructions_count_[cs.id];
+        }
 
         for (auto& m : mem_accesses) {
             if (m.is_load) {

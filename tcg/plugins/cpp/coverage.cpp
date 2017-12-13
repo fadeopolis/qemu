@@ -14,7 +14,8 @@ public:
     {
     }
 
-    void on_block_enter(translation_block& b) override
+    void on_block_executed(translation_block& b,
+                           const std::vector<memory_access>&) override
     {
         symbol& s = *b.current_symbol();
         if (s.name().empty())

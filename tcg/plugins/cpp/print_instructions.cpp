@@ -46,9 +46,8 @@ public:
         }
     }
 
-    void on_instruction_exec(
-        translation_block&, instruction& i,
-        const std::vector<memory_access>& memory_accesses) override
+    void on_instruction_exec(instruction& i,
+                             const std::vector<memory_access>& memory_accesses)
     {
         fprintf(output(), "exec 0x%" PRIx64 " %s\n", i.pc(), i.str().c_str());
         const source_line* line = i.line();
@@ -62,8 +61,14 @@ public:
                     m.is_load ? "load" : "store", m.size, m.address);
     }
 
-    void on_block_exit(translation_block& b) override
+    void on_block_executed(
+        translation_block& b,
+        const std::vector<memory_access>& memory_accesses) override
     {
+        for (auto* i : b.instructions()) {
+            on_instruction_exec(
+                *i, memory_accesses_for_instruction(*i, memory_accesses));
+        }
         fprintf(output(), "block exit 0x%" PRIx64 "\n", b.pc());
     }
 

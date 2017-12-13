@@ -472,27 +472,9 @@ private:
         }
 
         /* block execution */
-        for (const auto& p : plugins_) {
-            p->on_block_enter(b);
-        }
-
-        /* get memory accesses for current block */
         const auto& mem_accesses = be.get_memory_accesses();
-        auto mem_it = mem_accesses.begin();
-
-        std::vector<memory_access> reported_accesses;
-        for (const auto& i : b.instructions()) {
-            /* copy accesses related to current instruction */
-            while (mem_it != mem_accesses.end() && mem_it->pc == i->pc())
-                reported_accesses.emplace_back(*(mem_it++));
-
-            for (const auto& p : plugins_) {
-                p->on_instruction_exec(b, *i, reported_accesses);
-            }
-            reported_accesses.clear();
-        }
         for (const auto& p : plugins_) {
-            p->on_block_exit(b);
+            p->on_block_executed(b, mem_accesses);
         }
     }
 
@@ -782,6 +764,16 @@ instruction::capstone_inst_ptr instruction::get_new_capstone_instruction()
         cs_malloc(capstone::get().handle()),
         [](cs_insn* inst) { cs_free(inst, 1); });
     return insn;
+}
+
+std::vector<memory_access> plugin::memory_accesses_for_instruction(
+    const instruction& i, const std::vector<memory_access>& memory_accesses)
+{
+    std::vector<memory_access> inst_accesses;
+    std::copy_if(memory_accesses.begin(), memory_accesses.end(),
+                 std::back_inserter(inst_accesses),
+                 [&i](const auto& m) { return m.pc == i.pc(); });
+    return inst_accesses;
 }
 
 symbol& plugin::get_symbol(uint64_t pc, binary_file& file)

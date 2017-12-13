@@ -17,7 +17,8 @@ public:
     {
     }
 
-    void on_block_enter(translation_block& b) override
+    void on_block_executed(translation_block& b,
+                           const std::vector<memory_access>&) override
     {
         uint64_t num_inst_block = b.instructions().size();
         count_inst += num_inst_block;

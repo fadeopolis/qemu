@@ -74,9 +74,8 @@ private:
         return get_instruction_print(*inst.second, false, inst.first);
     }
 
-    void on_instruction_exec(
-        translation_block&, instruction& inst,
-        const std::vector<memory_access>& memory_accesses) override
+    void on_instruction_exec(instruction& inst,
+                             const std::vector<memory_access>& memory_accesses)
     {
         uint64_t id = instruction_num_;
         ++instruction_num_;
@@ -135,6 +134,16 @@ private:
                         m.address);
                 set_memory_producer(m.address, m.size, inst, id);
             }
+        }
+    }
+
+    void on_block_executed(
+        translation_block& b,
+        const std::vector<memory_access>& memory_accesses) override
+    {
+        for (auto* i : b.instructions()) {
+            on_instruction_exec(
+                *i, memory_accesses_for_instruction(*i, memory_accesses));
         }
     }
 
