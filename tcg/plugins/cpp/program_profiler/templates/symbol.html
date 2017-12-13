@@ -1,6 +1,6 @@
 {%include 'base.html' %}
-<a href="{{ index_file }}">Back to index</a>
-<a href="{{ cfg_dot_file }}">dot source</a>
+<a href="{{ index_file }}">Back to index</a> |
+<a href="{{ cfg_dot_file }}">control flow graph dot source</a> |
 <a href="{{ cfg_file }}">control flow graph</a>
 
 <div>
@@ -10,10 +10,13 @@
         <p>size: {{sym_size}}</p>
         <p>file: {{sym_file}}</p>
         <p>src: {{sym_src}}</p>
-        <p>number of times called: {{sym_stats.num_times_called}}</p>
+        <p>number of times called: {{sym_stats.num_times_entered}}</p>
         <p>instructions_executed: {{sym_stats.instructions_executed}} ({{sym_stats.instructions_executed_percentage|round(2)}}%)</p>
         <p>bytes_read: {{sym_stats.bytes_read}} ({{sym_stats.bytes_read_percentage|round(2)}}%)</p>
         <p>bytes_written: {{sym_stats.bytes_written}} ({{sym_stats.bytes_written_percentage|round(2)}}%)</p>
+        <p>instructions_executed_cumulated: {{sym_stats_cumulated.instructions_executed}} ({{sym_stats_cumulated.instructions_executed_percentage|round(2)}}%)</p>
+        <p>bytes_read_cumulated: {{sym_stats_cumulated.bytes_read}} ({{sym_stats_cumulated.bytes_read_percentage|round(2)}}%)</p>
+        <p>bytes_written_cumulated: {{sym_stats_cumulated.bytes_written}} ({{sym_stats_cumulated.bytes_written_percentage|round(2)}}%)</p>
         <p>
         was called by:
         <ul>
@@ -31,7 +34,7 @@
         </ul>
         </p>
     </div>
-    <div style="overflow: hidden;height:60vh;" class="svg_div svg_pan">{{ cfg_file }}</div>
+    <div style="overflow: hidden;height:75vh;" class="svg_div svg_pan">{{ cfg_file }}</div>
 </div>
 
 <div style="clear:both;"/>

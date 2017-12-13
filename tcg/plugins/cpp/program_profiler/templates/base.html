@@ -9,34 +9,6 @@
         <script src="./ext/js/svg-pan-zoom.min.js"></script>
     </head>
     <body>
-        <script>
-            $(document).ready(function(){
-                $('.dyn_table').dataTable({
-                    paging: false,
-                    deferRender: true,
-                    responsive: true
-                });
-                $('.svg_div').each(function() {
-                    var file = this.textContent;
-                    this.textContent = '';
-                    $(this).load(file, function() {
-                        var img = $(this).children('svg')
-                        img.attr('width', '100%');
-                        img.attr('height', '100%');
-                        if ($(this).hasClass('svg_pan'))
-                        {
-                            svgPanZoom(img[0], {
-                                minZoom: 0.001,
-                                maxZoom: 1000,
-                                zoomEnabled: true,
-                                controlIconsEnabled: true,
-                                zoomScaleSensitivity: 0.5
-                            });
-                        }
-                    });
-                });
-            });
-        </script>
         <style>
 /* avoid spacing in table row with <pre> */
 pre
@@ -44,4 +16,3 @@ pre
     display: inline;
 }
         </style>
-

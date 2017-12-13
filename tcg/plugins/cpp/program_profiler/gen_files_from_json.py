@@ -107,19 +107,23 @@ def load_json(input_json):
     return data
 
 
-def get_symbol_src_start(s):
-    # first block has the lowest id, which matches the first time block
-    # was created, thus the entry block of function
-    first_block = s['basic_blocks'][0]
-    first_block_instrs = first_block['instructions']
-    if not first_block_instrs:
+def get_basic_block_src_start(block):
+    block_instrs = block['instructions']
+    if not block_instrs:
         return ''
-    first_instr = first_block_instrs[0]
+    first_instr = block_instrs[0]
     src = ''
     src_node = first_instr['src']
     if src_node:
         src = src_node['file'] + ':' + str(src_node['line'])
     return src
+
+
+def get_symbol_src_start(s):
+    # first block has the lowest id, which matches the first time block
+    # was created, thus the entry block of function
+    first_block = s['basic_blocks'][0]
+    return get_basic_block_src_start(first_block)
 
 
 def get_symbol_name(s):
@@ -129,8 +133,9 @@ def get_symbol_name(s):
     return name
 
 
-def stats_for_symbol(s, stats):
-    num_times_called = s['num_times_called']
+def stats_to_dict(s, stats):
+    num_times_entered = s['num_times_entered']
+    num_times_repeated = s['num_times_repeated']
     instructions_executed = s['instructions_executed']
     instructions_executed_percentage = 0
     if instructions_executed:
@@ -146,7 +151,8 @@ def stats_for_symbol(s, stats):
         bytes_written_percentage = 100.0 * bytes_written / stats[
             'bytes_written']
     return dict(
-        num_times_called=num_times_called,
+        num_times_entered=num_times_entered,
+        num_times_repeated=num_times_repeated,
         instructions_executed=instructions_executed,
         instructions_executed_percentage=instructions_executed_percentage,
         bytes_read=bytes_read,
@@ -159,14 +165,136 @@ def get_symbol_url(s):
     return symbol_file_prefix + str(s['id']) + '.html'
 
 
-def generate_index(symbols, stats, call_stacks, original_json_input,
-                   output_dir, output_file, j2env, template_file):
-    flamegraph_file_name = output_file + '.flamegraph.txt'
-    flamegraph_image_file_name = flamegraph_file_name + '.svg'
-    flamegraph_file = os.path.join(output_dir, flamegraph_file_name)
-    flamegraph_image_file = os.path.join(output_dir,
-                                         flamegraph_image_file_name)
-    output_dot_file_name = output_file + '.dot.txt'
+def generate_loops_index(loops_list, stats, cpu_loop_stacks,
+                         mem_read_loop_stacks, mem_write_loop_stacks,
+                         output_dir, output_file, output_index, j2env,
+                         template_file):
+    cpu_flamegraph_file_name = output_file + '.cpu_flamegraph.txt'
+    cpu_flamegraph_image_file_name = cpu_flamegraph_file_name + '.svg'
+    cpu_flamegraph_file = os.path.join(output_dir, cpu_flamegraph_file_name)
+    cpu_flamegraph_image_file = os.path.join(output_dir,
+                                             cpu_flamegraph_image_file_name)
+    mem_read_flamegraph_file_name = output_file + '.mem_read_flamegraph.txt'
+    mem_read_flamegraph_image_file_name = mem_read_flamegraph_file_name + '.svg'
+    mem_read_flamegraph_file = os.path.join(output_dir,
+                                            mem_read_flamegraph_file_name)
+    mem_read_flamegraph_image_file = os.path.join(
+        output_dir, mem_read_flamegraph_image_file_name)
+    mem_write_flamegraph_file_name = output_file + '.mem_write_flamegraph.txt'
+    mem_write_flamegraph_image_file_name = mem_write_flamegraph_file_name + '.svg'
+    mem_write_flamegraph_file = os.path.join(output_dir,
+                                             mem_write_flamegraph_file_name)
+    mem_write_flamegraph_image_file = os.path.join(
+        output_dir, mem_write_flamegraph_image_file_name)
+    output_file = os.path.join(output_dir, output_file)
+
+    # create list of loops
+    loops = []
+    for l in sorted(loops_list, key=lambda x: x['loop_header']['pc']):
+        lh = l['loop_header']
+        pc = hex(lh['pc'])
+        src = get_basic_block_src_start(lh)
+
+        syms = []
+        for s in lh['symbols']:
+            sym = dict(name=get_symbol_name(s), url=get_symbol_url(s))
+            syms.append(sym)
+        loop = dict(
+            pc=pc,
+            src=src,
+            symbols=syms,
+            stats=stats_to_dict(l['stats'], stats),
+            stats_cumulated=stats_to_dict(l['stats_cumulated'], stats))
+        loops.append(loop)
+
+    log().info('generate loops index file %s', output_file)
+    out = j2env.get_template(template_file).render(
+        title='Loops Index',
+        cpu_flamegraph_file=cpu_flamegraph_image_file_name,
+        mem_read_flamegraph_file=mem_read_flamegraph_image_file_name,
+        mem_write_flamegraph_file=mem_write_flamegraph_image_file_name,
+        index_file=output_index,
+        loops=loops)
+    with open(output_file, 'w') as f:
+        f.write(out)
+
+    generate_flamegraph_from_loop_stacks(cpu_loop_stacks, cpu_flamegraph_file,
+                                         cpu_flamegraph_image_file, 'hot',
+                                         'instructions', 'Instructions')
+    generate_flamegraph_from_loop_stacks(
+        mem_read_loop_stacks, mem_read_flamegraph_file,
+        mem_read_flamegraph_image_file, 'green', 'bytes read', 'Memory read')
+    generate_flamegraph_from_loop_stacks(
+        mem_write_loop_stacks, mem_write_flamegraph_file,
+        mem_write_flamegraph_image_file, 'blue', 'bytes written',
+        'Memory write')
+
+
+def generate_flamegraph(stacks, flamegraph_file, flamegraph_image_file, color,
+                        countname, entryname, title):
+    log().info('generate flamegraph file %s', flamegraph_file)
+    with open(flamegraph_file, 'w') as f:
+        for s in stacks:
+            stack = ';'.join(s['entries'])
+            f.write(stack + ' ' + str(s['count']) + '\n')
+    with open(flamegraph_file, 'r') as infile:
+        with open(flamegraph_image_file, 'w') as outfile:
+            subprocess.check_call(
+                [
+                    flamegraph_script(), "--colors", color, '--countname',
+                    countname, '--nametype', entryname, '--hash', '--title',
+                    title, '--width', '900'
+                ],
+                stdin=infile,
+                stdout=outfile)
+
+
+def generate_flamegraph_from_call_stacks(call_stacks, flamegraph_file,
+                                         flamegraph_image_file, color,
+                                         countname, title):
+    stacks = []
+    for cs in call_stacks:
+        stacks.append(
+            dict(
+                entries=[x['name'] for x in cs['symbols']], count=cs['count']))
+    generate_flamegraph(stacks, flamegraph_file, flamegraph_image_file, color,
+                        countname, "function:", title)
+
+
+def generate_flamegraph_from_loop_stacks(loop_stacks, flamegraph_file,
+                                         flamegraph_image_file, color,
+                                         countname, title):
+    stacks = []
+    for ls in loop_stacks:
+        stacks.append(
+            dict(
+                entries=[hex(x['pc']) for x in ls['basic_blocks']],
+                count=ls['count']))
+    generate_flamegraph(stacks, flamegraph_file, flamegraph_image_file, color,
+                        countname, "loop:", title)
+
+
+def generate_index(symbols, stats, cpu_call_stacks, mem_read_call_stacks,
+                   mem_write_call_stacks, original_json_input, output_dir,
+                   output_file, loops_index, j2env, template_file):
+    cpu_flamegraph_file_name = output_file + '.cpu_flamegraph.txt'
+    cpu_flamegraph_image_file_name = cpu_flamegraph_file_name + '.svg'
+    cpu_flamegraph_file = os.path.join(output_dir, cpu_flamegraph_file_name)
+    cpu_flamegraph_image_file = os.path.join(output_dir,
+                                             cpu_flamegraph_image_file_name)
+    mem_read_flamegraph_file_name = output_file + '.mem_read_flamegraph.txt'
+    mem_read_flamegraph_image_file_name = mem_read_flamegraph_file_name + '.svg'
+    mem_read_flamegraph_file = os.path.join(output_dir,
+                                            mem_read_flamegraph_file_name)
+    mem_read_flamegraph_image_file = os.path.join(
+        output_dir, mem_read_flamegraph_image_file_name)
+    mem_write_flamegraph_file_name = output_file + '.mem_write_flamegraph.txt'
+    mem_write_flamegraph_image_file_name = mem_write_flamegraph_file_name + '.svg'
+    mem_write_flamegraph_file = os.path.join(output_dir,
+                                             mem_write_flamegraph_file_name)
+    mem_write_flamegraph_image_file = os.path.join(
+        output_dir, mem_write_flamegraph_image_file_name)
+    output_dot_file_name = output_file + '.call_graph.dot.txt'
     output_dot_file = os.path.join(output_dir, output_dot_file_name)
     output_file = os.path.join(output_dir, output_file)
 
@@ -180,7 +308,6 @@ def generate_index(symbols, stats, call_stacks, original_json_input,
         name = get_symbol_name(s)
         pc = hex(s['pc'])
         size = s['size']
-        num_times_called = s['num_times_called']
 
         src = get_symbol_src_start(s)
 
@@ -195,7 +322,8 @@ def generate_index(symbols, stats, call_stacks, original_json_input,
             src=src,
             binary=binary,
             url=sym_url,
-            stats=stats_for_symbol(s, stats))
+            stats=stats_to_dict(s['stats'], stats),
+            stats_cumulated=stats_to_dict(s['stats_cumulated'], stats))
         syms.append(sym)
 
         dot_name = name
@@ -210,23 +338,25 @@ def generate_index(symbols, stats, call_stacks, original_json_input,
         title='Index',
         call_graph_dot_file=output_dot_file_name,
         call_graph_file=output_dot_file_name + '.svg',
-        flamegraph_file=flamegraph_image_file_name,
+        cpu_flamegraph_file=cpu_flamegraph_image_file_name,
+        mem_read_flamegraph_file=mem_read_flamegraph_image_file_name,
+        mem_write_flamegraph_file=mem_write_flamegraph_image_file_name,
         json_file=original_json_input,
+        loops_index=loops_index,
         symbols=syms)
     with open(output_file, 'w') as f:
         f.write(out)
 
-    log().info('generate flamegraph file %s', flamegraph_file)
-    with open(flamegraph_file, 'w') as f:
-        for cs in call_stacks:
-            f.write('all')
-            for s in cs['symbols']:
-                f.write(';' + s['name'])
-            f.write(' ' + str(cs['count']) + '\n')
-    with open(flamegraph_file, 'r') as infile:
-        with open(flamegraph_image_file, 'w') as outfile:
-            subprocess.check_call(
-                flamegraph_script(), stdin=infile, stdout=outfile)
+    generate_flamegraph_from_call_stacks(cpu_call_stacks, cpu_flamegraph_file,
+                                         cpu_flamegraph_image_file, 'hot',
+                                         'instructions', 'Instructions')
+    generate_flamegraph_from_call_stacks(
+        mem_read_call_stacks, mem_read_flamegraph_file,
+        mem_read_flamegraph_image_file, 'green', 'bytes read', 'Memory read')
+    generate_flamegraph_from_call_stacks(
+        mem_write_call_stacks, mem_write_flamegraph_file,
+        mem_write_flamegraph_image_file, 'blue', 'bytes written',
+        'Memory write')
 
     svg_out = output_dot_file + '.svg'
     log().info('generate dot file %s', output_dot_file)
@@ -237,7 +367,7 @@ def generate_index(symbols, stats, call_stacks, original_json_input,
 @deadline(10)
 def generate_symbol_file(sym, stats, output_dir, output_file, index_file,
                          j2env, template_file, sym_number, sym_total_number):
-    output_dot_file_name = output_file + '.dot.txt'
+    output_dot_file_name = output_file + '.cfg.dot.txt'
     output_dot_file = os.path.join(output_dir, output_dot_file_name)
     output_file = os.path.join(output_dir, output_file)
 
@@ -343,7 +473,8 @@ def generate_symbol_file(sym, stats, output_dir, output_file, index_file,
         sym_calls=calls,
         sources=sources,
         assembly=assembly,
-        sym_stats=stats_for_symbol(sym, stats))
+        sym_stats=stats_to_dict(sym['stats'], stats),
+        sym_stats_cumulated=stats_to_dict(sym['stats_cumulated'], stats))
     with open(output_file, 'w') as f:
         f.write(out)
 
@@ -374,6 +505,7 @@ def generate_files(input_json, output_dir):
     shutil.copytree(ext_dir(), out_ext_dir)
     shutil.copyfile(input_json, os.path.join(output_dir, 'data.json'))
     output_index = 'index.html'
+    output_loops_index = 'loops.html'
 
     # replace symbols/blocks id by objects
     # create dict for symbols/blocks
@@ -396,8 +528,26 @@ def generate_files(input_json, output_dir):
         if b['loop_header']:
             b['loop_header'] = blocks_dict[b['loop_header']]
         b['symbols'] = [symbols_dict[sym_id] for sym_id in b['symbols']]
-    for cs in j['call_stacks']:
+    for cs in j['cpu_call_stacks']:
         cs['symbols'] = [symbols_dict[sym_id] for sym_id in cs['symbols']]
+    for cs in j['mem_read_call_stacks']:
+        cs['symbols'] = [symbols_dict[sym_id] for sym_id in cs['symbols']]
+    for cs in j['mem_write_call_stacks']:
+        cs['symbols'] = [symbols_dict[sym_id] for sym_id in cs['symbols']]
+    for l in j['loops']:
+        l['loop_header'] = blocks_dict[l['loop_header']]
+    for ls in j['cpu_loop_stacks']:
+        ls['basic_blocks'] = [
+            blocks_dict[block_id] for block_id in ls['basic_blocks']
+        ]
+    for ls in j['mem_read_loop_stacks']:
+        ls['basic_blocks'] = [
+            blocks_dict[block_id] for block_id in ls['basic_blocks']
+        ]
+    for ls in j['mem_write_loop_stacks']:
+        ls['basic_blocks'] = [
+            blocks_dict[block_id] for block_id in ls['basic_blocks']
+        ]
 
     # compute callers
     for s in j['symbols']:
@@ -407,8 +557,14 @@ def generate_files(input_json, output_dir):
         for called in s['calls']:
             called['callers'].append(s)
 
-    generate_index(j['symbols'], j['statistics'], j['call_stacks'],
-                   'data.json', output_dir, output_index, j2env, 'index.html')
+    generate_index(j['symbols'], j['statistics'], j['cpu_call_stacks'],
+                   j['mem_read_call_stacks'], j['mem_write_call_stacks'],
+                   'data.json', output_dir, output_index, output_loops_index,
+                   j2env, 'index.html')
+    generate_loops_index(j['loops'], j['statistics'], j['cpu_loop_stacks'],
+                         j['mem_read_loop_stacks'], j['mem_write_loop_stacks'],
+                         output_dir, output_loops_index, output_index, j2env,
+                         'loops.html')
 
     total_syms = len(j['symbols'])
     sym_number = 1

@@ -34,9 +34,13 @@ handler()
 
 driver()
 {
-    [ $# -lt 3 ] && die "usage: architecture output_dir program [program_args]"
+    [ $# -lt 3 ] && die "usage: architecture[:sysroot] output_dir program [program_args]"
 
     architecture="$1"
+    sysroot=$(echo "$architecture" | cut -f 2 -d ':')
+    architecture=$(echo "$architecture" | cut -f 1 -d ':')
+    [ "$architecture" == "$sysroot" ] && sysroot=""
+    [ "$sysroot" != "" ] && sysroot="-L $sysroot"
     shift
     output_dir="$1"
     shift
@@ -59,7 +63,7 @@ driver()
     qemu_bin="$script_directory/$architecture-linux-user/qemu-$architecture"
     python_script="$script_directory/tcg/plugins/cpp/program_profiler/gen_files_from_json.py"
 
-    "$qemu_bin" -tcg-plugin cpp "$program" "$@" <&0 &
+    "$qemu_bin" $sysroot -tcg-plugin cpp "$program" "$@" <&0 &
     qemu_pid=$!
     trap handler SIGINT
     wait $qemu_pid
@@ -69,9 +73,14 @@ driver()
         die "QEMU failed: returned $qemu_status"
     trap - SIGINT
 
+    info "json created is $TPI_OUTPUT ($(du -h $(readlink -f $TPI_OUTPUT) | cut -f 1))"
+
+    [ ! -z "${PP_STOP_AFTER_RUN:-}" ] && exit 0
+
+    info "pp: filter c++ and rust symbols in $TPI_OUTPUT"
     out_file="$TPI_OUTPUT".filtered
     cat "$TPI_OUTPUT" | "$rustfilt_bin" | "$cppfilt_bin" > $out_file
-    echo "json file used is: $out_file"
+    info "final json file used is: $out_file"
     "$python_script" -i "$out_file" -o "$output_dir" || die "python script failed"
 
     echo "output is available at $output_dir/index.html"

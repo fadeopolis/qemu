@@ -1,9 +1,9 @@
 #include "plugin_api.h"
 
-#include "cpu_flame_graph_profiler.h"
 #include "json.hpp"
 
 #include <algorithm>
+#include <inttypes.h>
 #include <set>
 #include <sstream>
 #include <thread>
@@ -12,25 +12,26 @@
 
 using json = nlohmann::json;
 
-class loop_and_call_stack
-{
-public:
-private:
-};
+class basic_block;
+using sym_call_stack = std::vector<const symbol*>;
+using loop_stack = std::vector<const basic_block*>;
 
 /* statistics associated to one context of execution (symbol, loops, ...) */
 class execution_statistics
 {
 public:
     void context_entered() { ++number_of_times_entered_; }
+    void context_repeated() { ++number_of_times_repeated_; }
 
-    void block_was_executed(translation_block& b,
-                            const std::vector<memory_access>& memory_accesses)
+    void block_was_executed(translation_block& b, uint64_t bytes_read,
+                            uint64_t bytes_written)
     {
         instructions_executed_ += b.instructions().size();
-        for (auto& m : memory_accesses)
-            memory_was_accessed(m);
+        total_bytes_read_ += bytes_read;
+        total_bytes_written_ += bytes_written;
     }
+
+    void block_was_executed(execution_statistics& stats) { *this += stats; }
 
     uint64_t instructions_executed() const { return instructions_executed_; }
     uint64_t total_bytes_read() const { return total_bytes_read_; }
@@ -39,20 +40,27 @@ public:
     {
         return number_of_times_entered_;
     }
-
-private:
-    void memory_was_accessed(const memory_access& m)
+    uint64_t number_of_times_repeated() const
     {
-        if (m.is_load)
-            total_bytes_read_ += m.size;
-        else
-            total_bytes_written_ += m.size;
+        return number_of_times_repeated_;
     }
 
+    execution_statistics& operator+=(const execution_statistics& rhs)
+    {
+        instructions_executed_ += rhs.instructions_executed_;
+        total_bytes_written_ += rhs.total_bytes_written_;
+        total_bytes_read_ += rhs.total_bytes_read_;
+        number_of_times_entered_ += rhs.number_of_times_entered_;
+        number_of_times_repeated_ += rhs.number_of_times_repeated_;
+        return *this;
+    }
+
+private:
     uint64_t instructions_executed_ = 0;
     uint64_t total_bytes_written_ = 0;
     uint64_t total_bytes_read_ = 0;
     uint64_t number_of_times_entered_ = 0;
+    uint64_t number_of_times_repeated_ = 0;
 };
 
 /* as opposed to translation_block, basic_block offers guarantee that
@@ -62,13 +70,6 @@ private:
 class basic_block
 {
 public:
-    enum class bb_type
-    {
-        EXIT_FUNC, /* ret */
-        CALL,      /* call */
-        OTHER,     /* jump or sequential execution */
-    };
-
     basic_block(translation_block& tb) : tb_(tb), size_(tb_.size()) {}
 
     uint64_t id() const { return tb_.id(); }
@@ -77,7 +78,6 @@ public:
     symbol& current_symbol() const { return *tb_.current_symbol(); }
     const std::unordered_set<symbol*>& symbols() const { return tb_.symbols(); }
     const std::vector<basic_block*>& successors() const { return successors_; }
-    bb_type type() const { return type_; }
     basic_block* loop_header() const { return loop_header_; }
     bool is_loop_header() const { return is_loop_header_; }
     std::vector<instruction*> instructions() const
@@ -107,19 +107,8 @@ public:
         // chain new block to orig one only
         orig_bb.chain_block(new_bb);
 
-        new_bb.loop_header_ = orig_bb.loop_header_;
-
-        switch (orig_bb.type()) {
-        case bb_type::OTHER:
-            /* current bb keeps this type */
-            break;
-        case bb_type::EXIT_FUNC:
-        case bb_type::CALL:
-            /* new bb get this type */
-            new_bb.set_type(orig_bb.type());
-            orig_bb.set_type(bb_type::OTHER);
-            break;
-        }
+        if (!new_bb.is_loop_header())
+            new_bb.loop_header_ = orig_bb.loop_header_;
     }
 
     bool chain_block(basic_block& succ)
@@ -132,14 +121,12 @@ public:
         return true;
     }
 
-    void set_type(bb_type type) { type_ = type; }
     void mark_as_loop_header(bool is_lh) { is_loop_header_ = is_lh; }
     void set_loop_header(basic_block* lh) { loop_header_ = lh; }
 
 private:
     translation_block& tb_;
     size_t size_;
-    bb_type type_ = bb_type::OTHER;
     std::vector<basic_block*> successors_;
     bool is_loop_header_ = false;
     basic_block* loop_header_ = nullptr;
@@ -176,12 +163,16 @@ static void identify_loops(basic_block* entry_block)
     bb_loop_infos infos;
     trav_loops_dfs(*entry_block, 0, infos);
 
+    // reset all blocks
+    for (auto& p : infos) {
+        basic_block* bb_ptr = p.first;
+        bb_ptr->mark_as_loop_header(false);
+        bb_ptr->set_loop_header(nullptr);
+    }
+
     // mark new loop header
     for (auto& p : infos) {
         basic_block* bb_ptr = p.first;
-        if (!bb_ptr)
-            continue;
-        bb_ptr->mark_as_loop_header(false); /* reset block */
         bb_loop_info& info = p.second;
         bb_ptr->set_loop_header(info.loop_header);
         if (info.loop_header)
@@ -229,6 +220,10 @@ static basic_block* trav_loops_dfs(basic_block& b0, uint64_t dfs_pos,
     b0_info.visited = true;
     b0_info.depth_first_search_pos = dfs_pos;
     for (basic_block* b : b0.successors()) {
+        /* ignore blocks not in this symbol */
+        if (&b0.current_symbol() != &b->current_symbol())
+            continue;
+
         bb_loop_info& b_info = infos[b];
         if (!b_info.visited) {
             basic_block* nh = trav_loops_dfs(*b, dfs_pos + 1, infos);
@@ -463,13 +458,24 @@ static json json_one_block(const basic_block& bb)
     return j;
 }
 
+static json json_one_statistic(const execution_statistics& stat)
+{
+    json j = {{"instructions_executed", stat.instructions_executed()},
+              {"num_times_entered", stat.number_of_times_entered()},
+              {"num_times_repeated", stat.number_of_times_repeated()},
+              {"bytes_written", stat.total_bytes_written()},
+              {"bytes_read", stat.total_bytes_read()}};
+    return j;
+}
+
 static json json_one_symbol(
     const symbol& s, std::vector<basic_block*>& sym_blocks,
     const std::vector<instruction*>& instructions,
     const std::unordered_set<symbol*>& calls,
     const std::unordered_set<const source_line*>& covered_source_lines,
     const std::unordered_set<instruction*>& covered_instructions,
-    const execution_statistics& stats)
+    const execution_statistics& stats,
+    const execution_statistics& stats_cumulated)
 {
     json j_instructions = json::array();
     for (instruction* i : instructions) {
@@ -514,15 +520,22 @@ static json json_one_symbol(
               {"basic_blocks", j_blocks},
               {"calls", j_calls},
               {"src", j_src},
-              {"instructions_executed", stats.instructions_executed()},
-              {"num_times_called", stats.number_of_times_entered()},
-              {"bytes_written", stats.total_bytes_written()},
-              {"bytes_read", stats.total_bytes_read()}};
+              {"stats", json_one_statistic(stats)},
+              {"stats_cumulated", json_one_statistic(stats_cumulated)}};
     return j;
 }
 
-json json_one_call_stack(
-    const plugin_cpu_flame_graph_profiler::sym_call_stack& cs, uint64_t count)
+static json json_one_loop(const basic_block& loop_header,
+                          const execution_statistics& stats,
+                          const execution_statistics& stats_cumulated)
+{
+    json j = {{"loop_header", loop_header.id()},
+              {"stats", json_one_statistic(stats)},
+              {"stats_cumulated", json_one_statistic(stats_cumulated)}};
+    return j;
+}
+
+json json_one_call_stack(const sym_call_stack& cs, uint64_t count)
 {
     json j_cs = json::array();
     for (auto* s : cs) {
@@ -530,6 +543,389 @@ json json_one_call_stack(
     }
     return json{{"symbols", j_cs}, {"count", count}};
 }
+
+json json_one_loop_stack(const loop_stack& ls, uint64_t count)
+{
+    json j_s = json::array();
+    for (auto* b : ls) {
+        j_s.emplace_back(b->id());
+    }
+    return json{{"basic_blocks", j_s}, {"count", count}};
+}
+
+struct loop_and_call_stack_entry
+{
+    loop_and_call_stack_entry(bool is_call, basic_block& bb,
+                              uint64_t expected_next_pc,
+                              execution_statistics& cumulated_stats)
+        : is_call(is_call), bb(&bb), orig_sym(&bb.current_symbol()),
+          expected_next_pc(expected_next_pc), cumulated_stats(&cumulated_stats)
+    {
+    }
+    bool is_call;     /* if true, it is a loop */
+    basic_block* bb;  /* if call, bb that made call, else loop header */
+    symbol* orig_sym; /* current symbol for bb at times of entry creation */
+    uint64_t expected_next_pc;             /* used for call return address */
+    execution_statistics* cumulated_stats; /* stats for context coming from this
+                                              one */
+};
+
+/* keeps track of stack for loops and functions */
+class loop_and_call_stack
+{
+public:
+    symbol* current_symbol() { return current_symbol_; }
+    basic_block* current_loop_header() { return current_loop_header_; }
+
+    void on_start(basic_block& bb) { set_current_symbol(&bb.current_symbol()); }
+
+    void on_call(basic_block& bb, basic_block& last)
+    {
+        // fprintf(stderr, "CALL @0x%" PRIx64 " FROM 0x%" PRIx64 "\n", bb.pc(),
+        //        last.current_symbol().pc());
+        set_current_symbol(&bb.current_symbol());
+        stack_.emplace_back(true, last, last.pc() + last.size(),
+                            symbols_stats_cumulated_[&last.current_symbol()]);
+
+        current_symbol_stats_->context_entered();
+    }
+
+    void on_return(basic_block& bb)
+    {
+        /* walk stack back to find where we returned */
+        for (auto it = stack_.rbegin(); it != stack_.rend(); ++it) {
+            if (it->is_call && bb.pc() == it->expected_next_pc) /* found */
+            {
+                stack_.erase(it.base() - 1, stack_.end());
+                break;
+            }
+        }
+
+        set_current_symbol(&bb.current_symbol());
+        /* find current loop header */
+        set_current_loop_header(backtrace_loop_header());
+        // fprintf(stderr, "RET IN 0x%" PRIx64 "\n", current_symbol_->pc());
+    }
+
+    basic_block* backtrace_loop_header()
+    {
+        for (auto it = stack_.rbegin(); it != stack_.rend(); ++it)
+            if (!it->is_call)
+                return it->bb;
+        return nullptr;
+    }
+
+    void on_transition(basic_block& bb, basic_block& last_bb)
+    {
+        // fprintf(stderr,
+        // "--------------------------------------------------\n");
+        // fprintf(stderr, "PREVIOUS BLOCK 0x%" PRIx64 "\n", last_bb.pc());
+        // fprintf(stderr, "CURRENT BLOCK 0x%" PRIx64 "\n", bb.pc());
+        // fprintf(stderr, "CURRENT BLOCK HEADER @0x%" PRIx64 "\n",
+        //        bb.loop_header() ? bb.loop_header()->pc() : 0);
+        // fprintf(stderr, "IS LOOP HEADER? %s\n",
+        //        bb.is_loop_header() ? "true" : "false");
+
+        if ((last_bb.loop_header() == bb.loop_header()) &&
+            !bb.is_loop_header() && !last_bb.is_loop_header()) {
+            /* we are still in the same loop iteration (or out of any) */
+            return;
+        }
+
+        /* we are changing of loop (or iteration) */
+        if (last_bb.loop_header() || last_bb.is_loop_header()) {
+            /* iterate on loop */
+            if (current_loop_header_ == &bb) {
+                // fprintf(stderr, "NEW LOOP ITER @0x%" PRIx64 "\n", bb.pc());
+                current_loop_header_stats_->context_repeated();
+                return;
+            }
+
+            if (current_loop_header_ &&
+                &current_loop_header_->current_symbol() ==
+                    &bb.current_symbol() &&
+                current_loop_header_ != bb.loop_header() &&
+                current_loop_header_ != &bb) {
+                /* exit current loop */
+                // fprintf(stderr, "EXIT LOOP @0x%" PRIx64 "\n",
+                //        current_loop_header_ ? current_loop_header_->pc() :
+                //        0);
+                for (auto it = stack_.rbegin(); it != stack_.rend(); ++it) {
+                    if (it->is_call)
+                        continue;
+                    if (it->orig_sym != &bb.current_symbol())
+                        break;
+                    if (it->bb == current_loop_header_) {
+                        stack_.erase(it.base() - 1, stack_.end());
+                        break;
+                    }
+                }
+                set_current_loop_header(backtrace_loop_header());
+            }
+        }
+
+        /* we don't enter in a new loop */
+        if (!bb.is_loop_header() && !bb.loop_header())
+            return;
+
+        /* we enter in a new loop */
+        basic_block* new_loop_header = bb.loop_header();
+        if (bb.is_loop_header())
+            new_loop_header = &bb;
+
+        if (new_loop_header == current_loop_header_)
+            return;
+
+        set_current_loop_header(new_loop_header);
+        stack_.emplace_back(false, *current_loop_header_, 0,
+                            loops_stats_cumulated_[current_loop_header_]);
+        current_loop_header_stats_->context_entered();
+        // fprintf(stderr, "ENTER LOOP @0x%" PRIx64 "\n",
+        //        current_loop_header_->pc());
+    }
+
+    void on_block_executed(translation_block& b,
+                           const std::vector<memory_access>& memory_accesses)
+    {
+        uint64_t bytes_read = 0;
+        uint64_t bytes_written = 0;
+
+        for (auto& m : memory_accesses) {
+            if (m.is_load)
+                bytes_read += m.size;
+            else
+                bytes_written += m.size;
+        }
+
+        execution_statistics block_stats;
+        block_stats.block_was_executed(b, bytes_read, bytes_written);
+
+        total_stats_.block_was_executed(block_stats);
+
+        /* record stats for current block/loop */
+        current_symbol_stats_->block_was_executed(block_stats);
+        /* current symbol is never pushed on stack, on the opposite of loop
+         * stack, thus add stat accumulated */
+        current_symbol_stats_cumulated_->block_was_executed(block_stats);
+        if (current_loop_header_)
+            current_loop_header_stats_->block_was_executed(block_stats);
+
+        /* record cumulated stats for blocks/loops */
+        for (auto& e : stack_)
+            e.cumulated_stats->block_was_executed(block_stats);
+
+        /* record call stack/loop stack every N samples */
+        record_cpu_stacks(b);
+        record_memory_stacks(b, bytes_read, bytes_written);
+    }
+
+    const std::map<sym_call_stack, uint64_t>& cpu_call_stacks_count() const
+    {
+        return cpu_call_stacks_count_;
+    }
+
+    const std::map<sym_call_stack, uint64_t>& mem_read_call_stacks_count() const
+    {
+        return mem_read_call_stacks_count_;
+    }
+
+    const std::map<sym_call_stack, uint64_t>&
+    mem_write_call_stacks_count() const
+    {
+        return mem_write_call_stacks_count_;
+    }
+
+    const std::map<loop_stack, uint64_t>& cpu_loop_stacks_count() const
+    {
+        return cpu_loop_stacks_count_;
+    }
+
+    const std::map<loop_stack, uint64_t>& mem_read_loop_stacks_count() const
+    {
+        return mem_read_loop_stacks_count_;
+    }
+
+    const std::map<loop_stack, uint64_t>& mem_write_loop_stacks_count() const
+    {
+        return mem_write_loop_stacks_count_;
+    }
+
+    const std::unordered_map<symbol*, execution_statistics>&
+    symbols_stats() const
+    {
+        return symbols_stats_;
+    }
+
+    const std::unordered_map<basic_block*, execution_statistics>&
+    loops_stats() const
+    {
+        return loops_stats_;
+    }
+
+    const execution_statistics& total_statistics() const
+    {
+        return total_stats_;
+    }
+
+    const std::unordered_map<symbol*, execution_statistics>&
+    symbols_stats_cumulated() const
+    {
+        return symbols_stats_cumulated_;
+    }
+
+    const std::unordered_map<basic_block*, execution_statistics>&
+    loops_stats_cumulated() const
+    {
+        return loops_stats_cumulated_;
+    }
+
+private:
+    void record_cpu_stacks(translation_block& b)
+    {
+        sample_record(b, count_inst_, b.instructions().size(),
+                      num_inst_cpu_sample_, [this](translation_block& b) {
+                          record_call_stack(b, cpu_call_stacks_count_,
+                                            num_inst_cpu_sample_);
+                      });
+        count_inst_ = sample_record(
+            b, count_inst_, b.instructions().size(), num_inst_cpu_sample_,
+            [this](translation_block& b) {
+                (void)b;
+                record_loop_stack(cpu_loop_stacks_count_, num_inst_cpu_sample_);
+            });
+    }
+
+    void record_memory_stacks(translation_block& b, uint64_t bytes_read,
+                              uint64_t bytes_written)
+    {
+        sample_record(b, count_bytes_read_, bytes_read, num_bytes_mem_sample_,
+                      [this](translation_block& b) {
+                          record_call_stack(b, mem_read_call_stacks_count_,
+                                            num_bytes_mem_sample_);
+                      });
+        sample_record(b, count_bytes_written_, bytes_written,
+                      num_bytes_mem_sample_, [this](translation_block& b) {
+                          record_call_stack(b, mem_write_call_stacks_count_,
+                                            num_bytes_mem_sample_);
+                      });
+
+        count_bytes_read_ =
+            sample_record(b, count_bytes_read_, bytes_read,
+                          num_bytes_mem_sample_, [this](translation_block& b) {
+                              (void)b;
+                              record_loop_stack(mem_read_loop_stacks_count_,
+                                                num_bytes_mem_sample_);
+                          });
+        count_bytes_written_ =
+            sample_record(b, count_bytes_written_, bytes_written,
+                          num_bytes_mem_sample_, [this](translation_block& b) {
+                              (void)b;
+                              record_loop_stack(mem_write_loop_stacks_count_,
+                                                num_bytes_mem_sample_);
+                          });
+    }
+
+    /* sample a record (with function @f) if needed for current block.
+     * return new count */
+    template <typename record_sample>
+    static uint64_t sample_record(translation_block& b, uint64_t count,
+                                  uint64_t current_block_count,
+                                  uint64_t sample_size, record_sample&& f)
+    {
+        unsigned int num_samples = current_block_count / sample_size;
+        for (unsigned int i = 0; i < num_samples; ++i)
+            f(b);
+        current_block_count = current_block_count % sample_size;
+        count += current_block_count;
+        if (count < sample_size)
+            return count;
+        count = count % sample_size;
+        f(b);
+        return count;
+    }
+
+    void record_loop_stack(std::map<loop_stack, uint64_t>& map_count,
+                           uint64_t sample_size)
+    {
+        loop_stack loop_s = call_stack_to_loop_stack(stack_);
+        map_count[loop_s] += sample_size;
+    }
+
+    void record_call_stack(translation_block& b,
+                           std::map<sym_call_stack, uint64_t>& map_count,
+                           uint64_t sample_size)
+    {
+        sym_call_stack sym_cs = call_stack_to_sym_call_stack(stack_);
+        sym_cs.emplace_back(b.current_symbol());
+        map_count[sym_cs] += sample_size;
+    }
+
+    static sym_call_stack
+    call_stack_to_sym_call_stack(std::vector<loop_and_call_stack_entry>& cs)
+    {
+        sym_call_stack res;
+        res.reserve(cs.size() + 1);
+        for (const auto& e : cs) {
+            if (!e.is_call)
+                continue;
+            res.emplace_back(e.orig_sym);
+        }
+        return res;
+    }
+
+    static loop_stack
+    call_stack_to_loop_stack(std::vector<loop_and_call_stack_entry>& cs)
+    {
+        loop_stack res;
+        for (const auto& e : cs) {
+            if (e.is_call)
+                continue;
+            res.emplace_back(e.bb);
+        }
+        return res;
+    }
+
+    void set_current_symbol(symbol* s)
+    {
+        current_symbol_ = s;
+        current_symbol_stats_ = &symbols_stats_[s];
+        current_symbol_stats_cumulated_ = &symbols_stats_cumulated_[s];
+    }
+
+    void set_current_loop_header(basic_block* lh)
+    {
+        current_loop_header_ = lh;
+        current_loop_header_stats_ = nullptr;
+        if (current_loop_header_)
+            current_loop_header_stats_ = &loops_stats_[lh];
+    }
+
+    symbol* current_symbol_ = nullptr;
+    execution_statistics* current_symbol_stats_ = nullptr;
+    execution_statistics* current_symbol_stats_cumulated_ = nullptr;
+    basic_block* current_loop_header_ = nullptr;
+    execution_statistics* current_loop_header_stats_ = nullptr;
+    std::vector<loop_and_call_stack_entry> stack_;
+    std::map<sym_call_stack, uint64_t /* count */> cpu_call_stacks_count_;
+    std::map<sym_call_stack, uint64_t /* count */> mem_read_call_stacks_count_;
+    std::map<sym_call_stack, uint64_t /* count */> mem_write_call_stacks_count_;
+    std::map<loop_stack, uint64_t /* count */> cpu_loop_stacks_count_;
+    std::map<loop_stack, uint64_t /* count */> mem_read_loop_stacks_count_;
+    std::map<loop_stack, uint64_t /* count */> mem_write_loop_stacks_count_;
+    const uint64_t num_inst_cpu_sample_ = 2000;
+    const uint64_t num_bytes_mem_sample_ = 1000;
+    uint64_t count_inst_ = 0;
+    uint64_t count_bytes_read_ = 0;
+    uint64_t count_bytes_written_ = 0;
+    execution_statistics total_stats_;
+
+    // stats per context + cumulated (when symbol or loop is in loop/call stack)
+    std::unordered_map<symbol*, execution_statistics> symbols_stats_;
+    std::unordered_map<symbol*, execution_statistics> symbols_stats_cumulated_;
+    std::unordered_map<basic_block*, execution_statistics> loops_stats_;
+    std::unordered_map<basic_block*, execution_statistics>
+        loops_stats_cumulated_;
+};
 
 class plugin_program_profiler : public plugin
 {
@@ -541,29 +937,20 @@ public:
     }
 
 private:
-    struct per_thread
-    {
-        symbol* current_symbol_ = nullptr;
-        execution_statistics* current_sym_stats_ = nullptr;
-        plugin_cpu_flame_graph_profiler flame_graph_;
-        loop_and_call_stack stack_;
-    };
-
     /* we keep each info per thread */
-    per_thread& thread_data()
+    loop_and_call_stack& thread_lcs()
     {
-        static thread_local per_thread& tdata =
-            threads_data_[std::this_thread::get_id()];
-        return tdata;
+        static thread_local loop_and_call_stack& t =
+            threads_lcs_[std::this_thread::get_id()];
+        return t;
     }
 
     void on_block_executed(
         translation_block& b,
         const std::vector<memory_access>& memory_accesses) override
     {
-        auto& td = thread_data();
-        td.flame_graph_.on_block_executed(b, memory_accesses);
-        td.current_sym_stats_->block_was_executed(b, memory_accesses);
+        auto& lcs = thread_lcs();
+        lcs.on_block_executed(b, memory_accesses);
     }
 
     void
@@ -572,47 +959,53 @@ private:
                         translation_block* return_original_caller_tb) override
     {
         using tt = translation_block::block_transition_type;
-        using bt = basic_block::bb_type;
 
-        auto& td = thread_data();
-
-        /* update per thread data */
-        switch (type) {
-        case tt::START:
-        case tt::CALL:
-        case tt::RETURN:
-            td.current_symbol_ = next.current_symbol();
-            td.current_sym_stats_ = &symbols_stats_[td.current_symbol_];
-            break;
-        case tt::SEQUENTIAL:
-        case tt::JUMP:
-            break;
-        }
+        auto& lcs = thread_lcs();
 
         /* treat transition */
         switch (type) {
         case tt::START:
-            return;
+            lcs.on_start(get_basic_block(next));
+            break;
         case tt::SEQUENTIAL:
         case tt::JUMP: {
             add_transition(*prev, next);
+            basic_block& next_bb = get_basic_block(next);
+            basic_block& prev_bb = get_basic_block(*prev);
+            basic_block& prev_bb_end = get_basic_block_ending(*prev);
+            if (prev_bb.pc() != prev_bb_end.pc()) {
+                /* simulate all transitions for prev_bb (splitted in several
+                 * blocks) */
+                auto size = prev->size();
+                auto pc = prev->pc();
+                basic_block* prev_sub_bb = blocks_map_[pc];
+                while (size > prev_sub_bb->size()) {
+                    pc += prev_sub_bb->size();
+                    size -= prev_sub_bb->size();
+                    basic_block* next_sub_bb = blocks_map_[pc];
+                    lcs.on_transition(*next_sub_bb, *prev_sub_bb);
+                    prev_sub_bb = next_sub_bb;
+                }
+            }
+            // finally add transition from previous to next
+            lcs.on_transition(next_bb, prev_bb_end);
         } break;
         case tt::CALL: {
             translation_block& caller_tb = *prev;
             translation_block& callee_tb = next;
 
-            set_block_type(caller_tb, bt::CALL);
             set_as_entry_point(callee_tb);
             add_transition(caller_tb, callee_tb);
-            td.current_sym_stats_->context_entered();
+            lcs.on_call(get_basic_block(callee_tb),
+                        get_basic_block_ending(caller_tb));
         } break;
         case tt::RETURN: {
             translation_block& caller_tb = *return_original_caller_tb;
-            translation_block& callee_tb = *prev;
+            // translation_block& callee_tb = *prev;
             translation_block& returned_tb = next;
 
-            set_block_type(callee_tb, bt::EXIT_FUNC);
             add_transition(caller_tb, returned_tb);
+            lcs.on_return(get_basic_block(returned_tb));
         } break;
         }
     }
@@ -629,26 +1022,8 @@ private:
         basic_block& prev_bb_end = get_basic_block_ending(previous);
         basic_block& next_bb_start = get_basic_block(next);
         bool new_trans = prev_bb_end.chain_block(next_bb_start);
-        if (new_trans)
+        if (new_trans && previous.current_symbol() == next.current_symbol())
             identify_loops(entry_points_[previous.current_symbol()]);
-    }
-
-    void set_block_type(translation_block& b, basic_block::bb_type type)
-    {
-        basic_block& bb_start = get_basic_block(b);
-        basic_block& bb_end = get_basic_block_ending(b);
-
-        using bt = basic_block::bb_type;
-
-        switch (type) {
-        case bt::OTHER:
-            bb_start.set_type(type);
-            break;
-        case bt::EXIT_FUNC:
-        case bt::CALL:
-            bb_end.set_type(type);
-            break;
-        }
     }
 
     basic_block& get_basic_block_ending(translation_block& tb)
@@ -729,21 +1104,13 @@ private:
         return j;
     }
 
-    json json_call_stacks() const
+    template <typename get_map_from_lcs>
+    json json_call_stacks(get_map_from_lcs&& f) const
     {
         json j = json::array();
 
-        /* make union of all call stacks in every thread */
-        std::map<plugin_cpu_flame_graph_profiler::sym_call_stack, uint64_t>
-            call_stacks;
-        for (auto& p_thread : threads_data_) {
-            auto& td = p_thread.second;
-            for (auto& p : td.flame_graph_.call_stack_count()) {
-                const auto& stack = p.first;
-                auto count = p.second;
-                call_stacks[stack] += count;
-            }
-        }
+        std::map<sym_call_stack, uint64_t> call_stacks =
+            merge_and_add_maps_from_loop_call_stacks<decltype(call_stacks)>(f);
 
         for (auto& p : call_stacks) {
             const auto& stack = p.first;
@@ -753,23 +1120,31 @@ private:
         return j;
     }
 
+    template <typename get_map_from_lcs>
+    json json_loop_stacks(get_map_from_lcs&& f) const
+    {
+        json j = json::array();
+
+        std::map<loop_stack, uint64_t> loop_stacks =
+            merge_and_add_maps_from_loop_call_stacks<decltype(loop_stacks)>(f);
+
+        for (auto& p : loop_stacks) {
+            const auto& stack = p.first;
+            auto count = p.second;
+            j.emplace_back(json_one_loop_stack(stack, count));
+        }
+        return j;
+    }
+
     json json_statistics() const
     {
-        uint64_t total_instructions_executed = 0;
-        uint64_t total_bytes_read = 0;
-        uint64_t total_bytes_written = 0;
-
-        for (const auto& p : symbols_stats_) {
-            const execution_statistics& s = p.second;
-            total_instructions_executed += s.instructions_executed();
-            total_bytes_read += s.total_bytes_read();
-            total_bytes_written += s.total_bytes_written();
+        execution_statistics total;
+        for (auto& p_thread : threads_lcs_) {
+            auto& lcs = p_thread.second;
+            total += lcs.total_statistics();
         }
 
-        json j = {{"instructions_executed", total_instructions_executed},
-                  {"bytes_read", total_bytes_read},
-                  {"bytes_written", total_bytes_written}};
-        return j;
+        return json_one_statistic(total);
     }
 
     json json_symbols(
@@ -777,7 +1152,10 @@ private:
             symbols_to_blocks,
         std::unordered_map<symbol*, std::unordered_set<symbol*>>& symbols_calls,
         const std::unordered_set<const source_line*>& covered_source_lines,
-        const std::unordered_set<instruction*>& covered_instructions)
+        const std::unordered_set<instruction*>& covered_instructions,
+        std::unordered_map<symbol*, execution_statistics>& symbols_stats,
+        std::unordered_map<symbol*, execution_statistics>&
+            symbols_stats_cumulated)
     {
         json j = json::array();
 
@@ -814,11 +1192,40 @@ private:
 
             std::unordered_set<symbol*> calls = symbols_calls[&s];
 
-            execution_statistics& stats = symbols_stats_[&s];
+            execution_statistics& stats = symbols_stats[&s];
+            execution_statistics& stats_cumulated = symbols_stats_cumulated[&s];
 
-            j.emplace_back(json_one_symbol(s, sym_blocks, instructions, calls,
-                                           covered_source_lines,
-                                           covered_instructions, stats));
+            j.emplace_back(json_one_symbol(
+                s, sym_blocks, instructions, calls, covered_source_lines,
+                covered_instructions, stats, stats_cumulated));
+        }
+
+        return j;
+    }
+
+    json json_loops()
+    {
+        json j = json::array();
+
+        /* make union of stats for all threads */
+        std::unordered_map<basic_block*, execution_statistics> loops_stats =
+            merge_and_add_maps_from_loop_call_stacks<decltype(loops_stats)>(
+                [](const auto& lcs) { return lcs.loops_stats(); });
+
+        std::unordered_map<basic_block*, execution_statistics>
+            loops_stats_cumulated =
+                merge_and_add_maps_from_loop_call_stacks<decltype(
+                    loops_stats_cumulated)>([](const auto& lcs) {
+                    return lcs.loops_stats_cumulated();
+                });
+
+        for (auto& p : loops_stats) {
+            basic_block& loop_header = *p.first;
+            execution_statistics& stats = p.second;
+            execution_statistics& cumulated_stats =
+                loops_stats_cumulated[&loop_header];
+
+            j.emplace_back(json_one_loop(loop_header, stats, cumulated_stats));
         }
 
         return j;
@@ -857,19 +1264,60 @@ private:
             covered_source_lines.emplace(src);
         }
 
-        j["symbols"] = json_symbols(symbols_to_blocks, symbols_calls,
-                                    covered_source_lines, covered_instructions);
+        /* make union of stats in all the threads */
+        std::unordered_map<symbol*, execution_statistics> symbols_stats =
+            merge_and_add_maps_from_loop_call_stacks<decltype(symbols_stats)>(
+                [](const auto& lcs) { return lcs.symbols_stats(); });
 
-        j["call_stacks"] = json_call_stacks();
+        std::unordered_map<symbol*, execution_statistics>
+            symbols_stats_cumulated =
+                merge_and_add_maps_from_loop_call_stacks<decltype(
+                    symbols_stats_cumulated)>([](const auto& lcs) {
+                    return lcs.symbols_stats_cumulated();
+                });
+
+        j["symbols"] = json_symbols(symbols_to_blocks, symbols_calls,
+                                    covered_source_lines, covered_instructions,
+                                    symbols_stats, symbols_stats_cumulated);
+
+        j["loops"] = json_loops();
+        j["cpu_call_stacks"] = json_call_stacks(
+            [](const auto& lcs) { return lcs.cpu_call_stacks_count(); });
+        j["mem_read_call_stacks"] = json_call_stacks(
+            [](const auto& lcs) { return lcs.mem_read_call_stacks_count(); });
+        j["mem_write_call_stacks"] = json_call_stacks(
+            [](const auto& lcs) { return lcs.mem_write_call_stacks_count(); });
+        j["cpu_loop_stacks"] = json_loop_stacks(
+            [](const auto& lcs) { return lcs.cpu_loop_stacks_count(); });
+        j["mem_read_loop_stacks"] = json_loop_stacks(
+            [](const auto& lcs) { return lcs.mem_read_loop_stacks_count(); });
+        j["mem_write_loop_stacks"] = json_loop_stacks(
+            [](const auto& lcs) { return lcs.mem_write_loop_stacks_count(); });
         j["statistics"] = json_statistics();
         fprintf(output(), "%s\n", j.dump(4, ' ').c_str());
+    }
+
+    /* merge and add values from different threads loop and call stack */
+    template <class map_type, typename get_map_for_each>
+    map_type
+    merge_and_add_maps_from_loop_call_stacks(get_map_for_each&& f) const
+    {
+        map_type res;
+        for (auto& p_thread : threads_lcs_) {
+            auto& lcs = p_thread.second;
+            for (auto& p : f(lcs)) {
+                const auto& key = p.first;
+                const auto& val = p.second;
+                res[key] += val;
+            }
+        }
+        return res;
     }
 
     std::unordered_map<uint64_t /* id */, basic_block> blocks_;
     std::unordered_map<uint64_t /* pc */, basic_block*> blocks_map_;
     std::unordered_map<symbol*, basic_block*> entry_points_;
-    std::unordered_map<symbol*, execution_statistics> symbols_stats_;
-    std::unordered_map<std::thread::id, per_thread> threads_data_;
+    std::unordered_map<std::thread::id, loop_and_call_stack> threads_lcs_;
 };
 
 REGISTER_PLUGIN(plugin_program_profiler);

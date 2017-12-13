@@ -506,6 +506,7 @@ private:
                         path.c_str(), error.c_str());
             }
             fprintf(stderr_out_, "done\n");
+            fflush(stderr_out_);
         }
 
         return file;
