@@ -224,12 +224,12 @@ private:
         }
 
         /* check if we returned, walk the stack to find expected pc */
-        for (auto it = call_stack_.end(); it != call_stack_.begin(); --it) {
+        for (auto it = call_stack_.rbegin(); it != call_stack_.rend(); ++it) {
             if (it->return_address() == b.pc()) /* this is a function return */
             {
                 caller_ = it->tb();
                 current_symbol_ = caller_->current_symbol();
-                call_stack_.erase(it, call_stack_.end());
+                call_stack_.erase(it.base()-1, call_stack_.end());
                 return tt::RETURN;
             }
         }
