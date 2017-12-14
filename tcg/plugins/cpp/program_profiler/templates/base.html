@@ -6,28 +6,16 @@
         <script src="./ext/js/jquery.min.js"></script>
         <script src="./ext/datatables/datatables.min.js"></script>
         <link rel="stylesheet" type="text/css" href="./ext/datatables/datatables.min.css">
-
         <script src="./ext/js/svg-pan-zoom.min.js"></script>
-
-        <link rel="stylesheet" href="ext/highlight/styles/zenburn.css">
-        <script src="ext/highlight/highlight.pack.js"></script>
-        <script>hljs.initHighlightingOnLoad();</script>
-        <style>
-/* avoid spacing in table row with <pre> */
-pre
-{
-    display: inline;
-}
-.code
-{
-    background-color:#3f3f3f;
-}
-        </style>
-
     </head>
     <body>
         <script>
             $(document).ready(function(){
+                $('.dyn_table').dataTable({
+                    paging: false,
+                    deferRender: true,
+                    responsive: true
+                });
                 $('.svg_div').each(function() {
                     var file = this.textContent;
                     this.textContent = '';
@@ -47,10 +35,13 @@ pre
                         }
                     });
                 });
-                $('.dyn_table').dataTable({
-                    paging: false,
-                    deferRender: true,
-                    responsive: true
-                });
             });
         </script>
+        <style>
+/* avoid spacing in table row with <pre> */
+pre
+{
+    display: inline;
+}
+        </style>
+
