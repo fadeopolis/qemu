@@ -62,6 +62,16 @@ static enum architecture get_guest_architecture(void)
 
 static void on_block_exec(translation_block** b_ptr)
 {
+    /* it seems there is a bug with before_gen_tb.
+     * The first instrumented block (despite before_gen_tb is called once) calls
+     * twice this callback (with two different blocks reported).
+     * Thus, just ignore first time we come through here */
+    static bool first_time = true;
+    if (first_time) {
+        first_time = false;
+        return;
+    }
+
     event_block_enter(*b_ptr, get_callee_return_address());
 }
 
@@ -96,6 +106,9 @@ static uint32_t memory_op_size(TCGMemOp memflags)
 
 static void after_gen_opc(const TCGPluginInterface* tpi, const TPIOpCode* op)
 {
+    if (!current_block_ptr)
+        return;
+
     const TCGOpcode opc = op->opcode->opc;
     uint64_t pc = op->pc;
 
@@ -155,6 +168,9 @@ static void before_gen_tb(const TCGPluginInterface* tpi)
 
 static void after_gen_tb(const TCGPluginInterface* tpi)
 {
+    if (!current_block_ptr)
+        return;
+
     /* tb size is only available after tb generation */
     const TranslationBlock* tb = tpi->tb;
     uint64_t pc = tb->pc;
@@ -169,6 +185,7 @@ static void after_gen_tb(const TCGPluginInterface* tpi)
         get_translation_block(pc, code, tb->size, file, load_address);
     /* patch current_block ptr */
     *current_block_ptr = block;
+    current_block_ptr = NULL;
 }
 
 static void cpus_stopped(const TCGPluginInterface* tpi)
