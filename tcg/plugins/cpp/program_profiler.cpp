@@ -29,11 +29,37 @@ public:
         instructions_executed_ += b.instructions().size();
         total_bytes_read_ += bytes_read;
         total_bytes_written_ += bytes_written;
+
+        for (auto* inst : b.instructions()) {
+            switch (get_instruction_type(*inst)) {
+            case instruction_type::MEMORY:
+                ++instructions_executed_memory_;
+                break;
+            case instruction_type::ARITHMETIC_AND_LOGIC:
+                ++instructions_executed_arithmetic_and_logic_;
+                break;
+            case instruction_type::CONTROL:
+                ++instructions_executed_control_;
+                break;
+            }
+        }
     }
 
     void block_was_executed(execution_statistics& stats) { *this += stats; }
 
     uint64_t instructions_executed() const { return instructions_executed_; }
+    uint64_t instructions_executed_memory() const
+    {
+        return instructions_executed_memory_;
+    }
+    uint64_t instructions_executed_control() const
+    {
+        return instructions_executed_control_;
+    }
+    uint64_t instructions_executed_arithmetic_and_logic() const
+    {
+        return instructions_executed_arithmetic_and_logic_;
+    }
     uint64_t total_bytes_read() const { return total_bytes_read_; }
     uint64_t total_bytes_written() const { return total_bytes_written_; }
     uint64_t number_of_times_entered() const
@@ -48,6 +74,10 @@ public:
     execution_statistics& operator+=(const execution_statistics& rhs)
     {
         instructions_executed_ += rhs.instructions_executed_;
+        instructions_executed_control_ += rhs.instructions_executed_control_;
+        instructions_executed_arithmetic_and_logic_ +=
+            rhs.instructions_executed_arithmetic_and_logic_;
+        instructions_executed_memory_ += rhs.instructions_executed_memory_;
         total_bytes_written_ += rhs.total_bytes_written_;
         total_bytes_read_ += rhs.total_bytes_read_;
         number_of_times_entered_ += rhs.number_of_times_entered_;
@@ -56,7 +86,76 @@ public:
     }
 
 private:
+    enum class instruction_type
+    {
+        MEMORY,
+        ARITHMETIC_AND_LOGIC,
+        CONTROL
+    };
+
+    instruction_type get_instruction_type(const instruction& inst)
+    {
+        const cs_insn* cap = &inst.capstone_inst();
+
+        /* we classify as memory inst any having one memory operand. In case of
+         * x86, most arithmetic instructions can have memory operand, which may
+         * results in wrong results. */
+
+        if (insn_is_control(cap))
+            return instruction_type::CONTROL;
+        else if (insn_has_memory_operand(cap))
+            return instruction_type::MEMORY;
+        else
+            return instruction_type::ARITHMETIC_AND_LOGIC;
+    }
+
+    static bool insn_is_control(const cs_insn* insn)
+    {
+        return insn_is_in_group(insn, CS_GRP_JUMP) ||
+               insn_is_in_group(insn, CS_GRP_CALL) ||
+               insn_is_in_group(insn, CS_GRP_RET) ||
+               insn_is_in_group(insn, CS_GRP_INT) ||
+               insn_is_in_group(insn, CS_GRP_IRET);
+    }
+
+    static bool insn_is_in_group(const cs_insn* insn, cs_group_type group)
+    {
+        return cs_insn_group(instruction::get_capstone_handle(), insn, group);
+    }
+
+    template <typename arch_details, typename op_type>
+    static bool insn_has_memory_operand_arch(const arch_details& details,
+                                             op_type mem_type)
+    {
+        for (size_t i = 0; i < details.op_count; i++) {
+            if (details.operands[i].type == mem_type) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static bool insn_has_memory_operand(const cs_insn* insn)
+    {
+        switch (plugin::get_guest_architecture()) {
+        case architecture::ARCHITECTURE_ARM:
+            return insn_has_memory_operand_arch(insn->detail->arm, ARM_OP_MEM);
+        case architecture::ARCHITECTURE_I386:
+        case architecture::ARCHITECTURE_X86_64:
+            return insn_has_memory_operand_arch(insn->detail->x86, X86_OP_MEM);
+        case architecture::ARCHITECTURE_AARCH64:
+            return insn_has_memory_operand_arch(insn->detail->arm64,
+                                                ARM64_OP_MEM);
+        case architecture::ARCHITECTURE_UNKNOWN:
+            return false;
+        }
+        return false;
+    }
+
     uint64_t instructions_executed_ = 0;
+    uint64_t instructions_executed_memory_ = 0;
+    uint64_t instructions_executed_arithmetic_and_logic_ = 0;
+    uint64_t instructions_executed_control_ = 0;
     uint64_t total_bytes_written_ = 0;
     uint64_t total_bytes_read_ = 0;
     uint64_t number_of_times_entered_ = 0;
@@ -460,11 +559,16 @@ static json json_one_block(const basic_block& bb)
 
 static json json_one_statistic(const execution_statistics& stat)
 {
-    json j = {{"instructions_executed", stat.instructions_executed()},
-              {"num_times_entered", stat.number_of_times_entered()},
-              {"num_times_repeated", stat.number_of_times_repeated()},
-              {"bytes_written", stat.total_bytes_written()},
-              {"bytes_read", stat.total_bytes_read()}};
+    json j = {
+        {"instructions_executed", stat.instructions_executed()},
+        {"instructions_executed_memory", stat.instructions_executed_memory()},
+        {"instructions_executed_arithmetic_and_logic",
+         stat.instructions_executed_arithmetic_and_logic()},
+        {"instructions_executed_control", stat.instructions_executed_control()},
+        {"num_times_entered", stat.number_of_times_entered()},
+        {"num_times_repeated", stat.number_of_times_repeated()},
+        {"bytes_written", stat.total_bytes_written()},
+        {"bytes_read", stat.total_bytes_read()}};
     return j;
 }
 

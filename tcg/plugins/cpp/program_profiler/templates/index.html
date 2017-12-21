@@ -10,6 +10,7 @@
 </p>
 
 <div class="svg_div svg_pan callgraph_pan">{{ call_graph_file }}</div>
+
 <object data="{{cpu_flamegraph_file}}" type="image/svg+xml"></object>
 <object data="{{mem_read_flamegraph_file}}" type="image/svg+xml"></object>
 <object data="{{mem_write_flamegraph_file}}" type="image/svg+xml"></object>
@@ -23,17 +24,14 @@
             <th>binary file</th>
             <th>source file</th>
             <th>times called</th>
-            <th>inst exec</th>
             <th>inst exec (%)</th>
-            <th>bytes read</th>
+            <th>control inst exec (%)</th>
+            <th>arith logic inst exec (%)</th>
+            <th>memory inst exec (%)</th>
             <th>bytes read (%)</th>
-            <th>bytes written</th>
             <th>bytes written (%)</th>
-            <th>cumulated inst exec</th>
             <th>cumulated inst exec (%)</th>
-            <th>cumulated bytes read</th>
             <th>cumulated bytes read (%)</th>
-            <th>cumulated bytes written</th>
             <th>cumulated bytes written (%)</th>
         </tr>
     </thead>
@@ -46,17 +44,14 @@
             <td>{{s.binary}}</td>
             <td>{{s.src}}</td>
             <td>{{s.stats.num_times_entered}}</td>
-            <td>{{s.stats.instructions_executed}}</td>
             <td>{{s.stats.instructions_executed_percentage|round(2)}}%</td>
-            <td>{{s.stats.bytes_read}}</td>
+            <td>{{s.stats.instructions_executed_control_percentage|round(2)}}%</td>
+            <td>{{s.stats.instructions_executed_arithmetic_and_logic_percentage|round(2)}}%</td>
+            <td>{{s.stats.instructions_executed_memory_percentage|round(2)}}%</td>
             <td>{{s.stats.bytes_read_percentage|round(2)}}%</td>
-            <td>{{s.stats.bytes_written}}</td>
             <td>{{s.stats.bytes_written_percentage|round(2)}}%</td>
-            <td>{{s.stats_cumulated.instructions_executed}}</td>
             <td>{{s.stats_cumulated.instructions_executed_percentage|round(2)}}%</td>
-            <td>{{s.stats_cumulated.bytes_read}}</td>
             <td>{{s.stats_cumulated.bytes_read_percentage|round(2)}}%</td>
-            <td>{{s.stats_cumulated.bytes_written}}</td>
             <td>{{s.stats_cumulated.bytes_written_percentage|round(2)}}%</td>
         </tr>
         {% endfor %}

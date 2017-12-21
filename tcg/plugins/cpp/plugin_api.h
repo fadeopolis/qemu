@@ -1,5 +1,7 @@
 #pragma once
 
+#include "plugin_instrumentation_api.h"
+
 #include <capstone.h>
 #include <cstdio>
 #include <cstdlib>
@@ -276,6 +278,9 @@ public:
 
     // get or create symbol @pc in @file
     static symbol& get_symbol(uint64_t pc, binary_file& file);
+
+    // return guest architecture
+    static enum architecture get_guest_architecture();
 
 protected:
     // output stream

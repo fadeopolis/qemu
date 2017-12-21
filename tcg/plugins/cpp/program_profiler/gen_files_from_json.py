@@ -141,6 +141,22 @@ def stats_to_dict(s, stats):
     if instructions_executed:
         instructions_executed_percentage = 100.0 * instructions_executed / stats[
             'instructions_executed']
+    instructions_executed_memory = s['instructions_executed_memory']
+    instructions_executed_memory_percentage = 0
+    if instructions_executed_memory:
+        instructions_executed_memory_percentage = 100.0 * instructions_executed_memory / s[
+            'instructions_executed']
+    instructions_executed_arithmetic_and_logic = s[
+        'instructions_executed_arithmetic_and_logic']
+    instructions_executed_arithmetic_and_logic_percentage = 0
+    if instructions_executed_arithmetic_and_logic:
+        instructions_executed_arithmetic_and_logic_percentage = 100.0 * instructions_executed_arithmetic_and_logic / s[
+            'instructions_executed']
+    instructions_executed_control = s['instructions_executed_control']
+    instructions_executed_control_percentage = 0
+    if instructions_executed_control:
+        instructions_executed_control_percentage = 100.0 * instructions_executed_control / s[
+            'instructions_executed']
     bytes_read = s['bytes_read']
     bytes_read_percentage = 0
     if bytes_read:
@@ -155,6 +171,16 @@ def stats_to_dict(s, stats):
         num_times_repeated=num_times_repeated,
         instructions_executed=instructions_executed,
         instructions_executed_percentage=instructions_executed_percentage,
+        instructions_executed_arithmetic_and_logic=
+        instructions_executed_arithmetic_and_logic,
+        instructions_executed_arithmetic_and_logic_percentage=
+        instructions_executed_arithmetic_and_logic_percentage,
+        instructions_executed_memory=instructions_executed_memory,
+        instructions_executed_memory_percentage=
+        instructions_executed_memory_percentage,
+        instructions_executed_control=instructions_executed_control,
+        instructions_executed_control_percentage=
+        instructions_executed_control_percentage,
         bytes_read=bytes_read,
         bytes_read_percentage=bytes_read_percentage,
         bytes_written=bytes_written,

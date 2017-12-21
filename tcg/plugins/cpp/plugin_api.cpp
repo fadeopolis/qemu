@@ -42,6 +42,11 @@ public:
         guest_architecture = arch;
     }
 
+    static enum architecture get_guest_architecture()
+    {
+        return guest_architecture;
+    }
+
 private:
     capstone()
     {
@@ -797,6 +802,11 @@ call_stack plugin::get_call_stack()
 FILE* plugin::output()
 {
     return plugin_manager::get().get_output();
+}
+
+enum architecture plugin::get_guest_architecture()
+{
+    return capstone::get_guest_architecture();
 }
 
 const std::string plugin_manager::env_var_plugins_name_ = "TCG_PLUGIN_CPP";
