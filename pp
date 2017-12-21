@@ -59,7 +59,7 @@ driver()
     fi
 
     export TPI_OUTPUT="/tmp/$$-out.json"
-    export TCG_PLUGIN_CPP="program_profiler"
+    export PLUGIN_CPP="program_profiler"
     qemu_bin="$script_directory/$architecture-linux-user/qemu-$architecture"
     python_script="$script_directory/tcg/plugins/cpp/program_profiler/gen_files_from_json.py"
 

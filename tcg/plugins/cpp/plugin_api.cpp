@@ -189,9 +189,8 @@ public:
                            uint64_t address, uint32_t size, bool is_load)
     {
         if (&b != current_block_) {
-            fprintf(stderr,
-                    "TCG_PLUGIN_CPP: ERROR - reporting memory access for "
-                    "unknown block\n");
+            fprintf(stderr, "PLUGIN_CPP: ERROR - reporting memory access for "
+                            "unknown block\n");
             exit(EXIT_FAILURE);
         }
         memory_accesses_.emplace_back(pc, address, size, is_load);
@@ -234,7 +233,7 @@ private:
             {
                 caller_ = it->tb();
                 current_symbol_ = caller_->current_symbol();
-                call_stack_.erase(it.base()-1, call_stack_.end());
+                call_stack_.erase(it.base() - 1, call_stack_.end());
                 return tt::RETURN;
             }
         }
@@ -397,7 +396,7 @@ public:
         // report last block executed, that was exit */
         block_was_executed(get_current_thread_be());
 
-        fprintf(stderr_out_, "TCG_PLUGIN_CPP: event_cpus_stopped\n");
+        fprintf(stderr_out_, "PLUGIN_CPP: event_cpus_stopped\n");
         for (const auto& p : plugins_) {
             p->on_program_end();
         }
@@ -443,12 +442,10 @@ public:
         float sys_time =
             usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1000000.f;
 
-        fprintf(stderr_out_, "TCG_PLUGIN_CPP: memory usage: %luMB\n",
+        fprintf(stderr_out_, "PLUGIN_CPP: memory usage: %luMB\n",
                 usage.ru_maxrss / 1024);
-        fprintf(stderr_out_, "TCG_PLUGIN_CPP: cpu user usage: %.2fs\n",
-                user_time);
-        fprintf(stderr_out_, "TCG_PLUGIN_CPP: cpu system usage: %.2fs\n",
-                sys_time);
+        fprintf(stderr_out_, "PLUGIN_CPP: cpu user usage: %.2fs\n", user_time);
+        fprintf(stderr_out_, "PLUGIN_CPP: cpu system usage: %.2fs\n", sys_time);
         fflush(stderr_out_);
     }
 
@@ -495,18 +492,18 @@ private:
 
         std::string error;
         if (!path.empty()) {
-            fprintf(stderr_out_, "TCG_PLUGIN_CPP: read ELF/DWARF for %s... ",
+            fprintf(stderr_out_, "PLUGIN_CPP: read ELF/DWARF for %s... ",
                     path.c_str());
             fflush(stderr_out_);
             if (!read_elf(file, load_address, error)) {
                 fprintf(stderr_out_,
-                        "TCG_PLUGIN_CPP: WARNING - error reading ELF for "
+                        "PLUGIN_CPP: WARNING - error reading ELF for "
                         "file %s: %s\n",
                         path.c_str(), error.c_str());
             } else if (!ignore_dwarf_ &&
                        !read_dwarf(path, load_address, error)) {
                 fprintf(stderr_out_,
-                        "TCG_PLUGIN_CPP: WARNING - error reading DWARF "
+                        "PLUGIN_CPP: WARNING - error reading DWARF "
                         "for file %s: %s\n",
                         path.c_str(), error.c_str());
             }
@@ -637,7 +634,7 @@ private:
                     }
                 } catch (dwarf::format_error& exc) {
                     fprintf(stderr_out_,
-                            "TCG_PLUGIN_CPP: WARNING - error reading DWARF "
+                            "PLUGIN_CPP: WARNING - error reading DWARF "
                             "for compilation unit at offset 0x%" PRIx64 "\n",
                             cu.get_section_offset());
                     continue;
@@ -707,7 +704,7 @@ private:
     {
         ignore_dwarf_ = getenv(env_var_ignore_dwarf_.c_str()) != nullptr;
         if (ignore_dwarf_)
-            fprintf(stderr_out_, "TCG_PLUGIN_CPP: ignoring dwarf infos");
+            fprintf(stderr_out_, "PLUGIN_CPP: ignoring dwarf infos");
 
         const char* plugins_list_str = getenv(env_var_plugins_name_.c_str());
 
@@ -809,9 +806,9 @@ enum architecture plugin::get_guest_architecture()
     return capstone::get_guest_architecture();
 }
 
-const std::string plugin_manager::env_var_plugins_name_ = "TCG_PLUGIN_CPP";
+const std::string plugin_manager::env_var_plugins_name_ = "PLUGIN_CPP";
 const std::string plugin_manager::env_var_ignore_dwarf_ =
-    "TCG_PLUGIN_CPP_IGNORE_DWARF";
+    "PLUGIN_CPP_IGNORE_DWARF";
 
 void plugin_init(FILE* out, enum architecture arch)
 {

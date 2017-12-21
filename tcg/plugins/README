@@ -160,12 +160,12 @@ a read-only view of the code executed.
 Please see plugins in tcg/plugins/cpp for example. API is described in
 tcg/plugins/cpp/plugin_api.h.
 
-Plugins configuration is made through env var TCG_PLUGIN_CPP.
+Plugins configuration is made through env var PLUGIN_CPP.
 
 ``./x86_64-linux-user/qemu-x86_64 -tcg-plugin cpp /bin/true`` will list cpp
 plugins available.
 
-``TCG_PLUGIN_CPP=count_instructions,print_instructions
+``PLUGIN_CPP=count_instructions,print_instructions
 ./x86_64-linux-user/qemu-x86_64 -tcg-plugin cpp /bin/true`` will enable plugins
 count_instructions and print_instructions.
 
