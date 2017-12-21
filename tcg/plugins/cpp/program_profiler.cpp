@@ -45,7 +45,10 @@ public:
         }
     }
 
-    void block_was_executed(execution_statistics& stats) { *this += stats; }
+    void block_was_executed(const execution_statistics& stats)
+    {
+        *this += stats;
+    }
 
     uint64_t instructions_executed() const { return instructions_executed_; }
     uint64_t instructions_executed_memory() const
@@ -791,18 +794,8 @@ public:
     void on_block_executed(translation_block& b,
                            const std::vector<memory_access>& memory_accesses)
     {
-        uint64_t bytes_read = 0;
-        uint64_t bytes_written = 0;
-
-        for (auto& m : memory_accesses) {
-            if (m.is_load)
-                bytes_read += m.size;
-            else
-                bytes_written += m.size;
-        }
-
-        execution_statistics block_stats;
-        block_stats.block_was_executed(b, bytes_read, bytes_written);
+        const execution_statistics& block_stats =
+            get_stats_for_block(b, memory_accesses);
 
         total_stats_.block_was_executed(block_stats);
 
@@ -820,7 +813,8 @@ public:
 
         /* record call stack/loop stack every N samples */
         record_cpu_stacks(b);
-        record_memory_stacks(b, bytes_read, bytes_written);
+        record_memory_stacks(b, block_stats.total_bytes_read(),
+                             block_stats.total_bytes_written());
     }
 
     const std::map<sym_call_stack, uint64_t>& cpu_call_stacks_count() const
@@ -1004,6 +998,30 @@ private:
             current_loop_header_stats_ = &loops_stats_[lh];
     }
 
+    const execution_statistics&
+    get_stats_for_block(translation_block& b,
+                        const std::vector<memory_access>& memory_accesses)
+    {
+        auto it = stat_per_block.find(&b);
+        if (it != stat_per_block.end())
+            return it->second;
+
+        uint64_t bytes_read = 0;
+        uint64_t bytes_written = 0;
+
+        for (auto& m : memory_accesses) {
+            if (m.is_load)
+                bytes_read += m.size;
+            else
+                bytes_written += m.size;
+        }
+
+        execution_statistics block_stats;
+        block_stats.block_was_executed(b, bytes_read, bytes_written);
+
+        return stat_per_block.emplace(&b, block_stats).first->second;
+    }
+
     symbol* current_symbol_ = nullptr;
     execution_statistics* current_symbol_stats_ = nullptr;
     execution_statistics* current_symbol_stats_cumulated_ = nullptr;
@@ -1029,6 +1047,12 @@ private:
     std::unordered_map<basic_block*, execution_statistics> loops_stats_;
     std::unordered_map<basic_block*, execution_statistics>
         loops_stats_cumulated_;
+
+    /* to avoid recomputing stats at every block exec, we keep it in a map.
+     * This implies we consider two execution of the same block results in the
+     * same stats. This is almost always true, to the notable exception of
+     * conditional load/store. Ignore this for sake of performance. */
+    std::unordered_map<translation_block*, execution_statistics> stat_per_block;
 };
 
 class plugin_program_profiler : public plugin
