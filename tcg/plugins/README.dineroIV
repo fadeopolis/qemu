@@ -49,9 +49,9 @@ instance in::
           stores:                     12,246
     ./hello-world (27438): number of estimated cycles = 407914
 
-As can be seen in the warning messages, the configuration for the caches
-latencies and the caches topology as to be set through some environment
-variables::
+As the warning messages show, the configuration for the caches
+latencies and the caches topology has to be set through some
+environment variables::
 
     DINEROIV_LATENCIES: comma separated list of fetch latency of each cache in
     sequence (starting from instruction caches, then data cache and unified
@@ -92,9 +92,9 @@ Then execute the program again, for instance::
         stores:                     12,246
     ./hello-world (28980): number of estimated cycles = 535876
 
-The default output for the plugin is as shown above a summary of the caches
+The default output for the plugin is, as shown above, a summary of the caches
 statistics for each fetch kinds (instruction, data read/write) as well as the
-number of executed instructions, load/store instructions and an estimate of
+number of instructions executed, load/store instructions and an estimate of
 the total number of cycles for the program execution.
 
 The output can be changed through the `DINEROIV_OUTPUTS` environment variable, a

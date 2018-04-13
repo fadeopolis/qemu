@@ -111,8 +111,8 @@ interface used by QEMU.  For instance you may encounter such errors::
     plugin: error: incompatible TranslationBlock structure size
 
 However some checks only warn the user that a component *may* not be
-compatible, which technically this could lead to unexpected
-behaviors (see `Generic Plugin`_ for explanation)::
+compatible, which technically could lead to unexpected behavior (see
+`Generic Plugin`_ for explanation)::
 
     plugin: warning: incompatible guest CPU
     plugin: warning: incompatible emulation mode
@@ -150,15 +150,15 @@ TPI_LOW_PC or TPI_HIGH_PC.
 CPP Plugins
 ===========
 
-In more to classic plugins, c++ support was added. To enable this, add
-``--enable-tcg-plugin-cpp`` option to the ``configure`` command.
+In addition to classic plugins, c++ support was added. To enable this,
+add ``--enable-tcg-plugin-cpp`` option to the ``configure`` command.
 
-This builds a special plugin whose name is tcg-plugin-cpp.so, that contains
-itself several plugins. This interface hides QEMU internals and leaves user with
-a read-only view of the code executed.
+This builds a special plugin whose name is tcg-plugin-cpp.so, that
+contains itself several plugins. This interface hides QEMU internals
+and leaves the user with a read-only view of the code executed.
 
-Please see plugins in tcg/plugins/cpp for example. API is described in
-tcg/plugins/cpp/plugin_api.h.
+Please see plugins in tcg/plugins/cpp for examples. The API is
+described in tcg/plugins/cpp/plugin_api.h.
 
 Plugins configuration is made through env var PLUGIN_CPP.
 
@@ -182,7 +182,7 @@ Build System
 ------------
 
 By default, any ``.c`` file lying in the directory ``tcg/plugins`` is
-considered to be a single plugin source.  If you had to specify
+considered to be a single plugin source.  If you have to specify
 specific CLFAGS/LDFLAGS for your plugin, just add them in the file
 ``Makefile.target`` like it was done for the ``profile`` plugin::
 
@@ -235,12 +235,12 @@ TCG Plugins?`_::
     };
 
 For convenience, there are two C macros that automatically set these
-fields.  The former macro uses proper values (``"arm"``, ``"user"``,
-...) whereas the latter uses generic values (``"any"`` or ``0``) that
-tell QEMU to skip some checks for `generic plugin`_.  Both macros set
-``version`` to the value TPI_VERSION defined in ``tcg-plugin.h``, but
-this field can be set to ``0`` if the TCG plugin wants to report an
-initialization failure to QEMU::
+fields.  The first macro uses proper values (``"arm"``, ``"user"``,
+...) whereas the second one uses generic values (``"any"`` or ``0``)
+that tell QEMU to skip some checks for `generic plugin`_.  Both macros
+set ``version`` to the value TPI_VERSION defined in ``tcg-plugin.h``,
+but this field can be set to ``0`` if the TCG plugin wants to report
+an initialization failure to QEMU::
 
     TPI_INIT_VERSION(TCGPluginInterface)
 
@@ -327,13 +327,13 @@ and is mainly used to collect analysis data.  Its declaration is::
                         TPIHelperInfo info, uint64_t address,
                         uint64_t data1, uint64_t data2)
 
-When QEMU calls this function, a mutex is used to avoid than more one
-thread executes it at the same time.  That means the resources only
-used by this function are protected from concurrent access.
+When QEMU calls this function, a mutex is used to avoid that more than
+one thread executes it at the same time.  That means the resources
+only used by this function are protected from concurrent access.
 
 The parameter ``info`` is a 64-bit structure defined as below.  Its
 fields ``size`` and ``icount`` are respectively the size of, and the
-number of *guest* instructions in, the translated basic block.  These
+number of *guest* instructions in the translated basic block.  These
 two fields are set to ``0`` when QEMU is re-translating an interrupted
 block::
 
@@ -467,7 +467,7 @@ Advices
 Deterministic code generation
 `````````````````````````````
 
-When an asynchronous event interrupt the execution of a translated
+When an asynchronous event interrupts the execution of a translated
 block (typically an exception), QEMU has to re-translate the
 interrupted block to create a mapping between host PC addresses and
 guest PC addresses, so as to retrieve which was the *virtual* guest PC
@@ -560,8 +560,8 @@ thread-safe since there's a chance that several threads increment the
 counter simultaneously in a non-atomic way.
 
 
-Limit of a TCG-based approach
-`````````````````````````````
+Limitations of a TCG-based approach
+```````````````````````````````````
 
 There are two main limitations of an approach based on TCG: the first
 one is that not all guest instructions are converted to TCG opcodes,
