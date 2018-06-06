@@ -43,6 +43,31 @@ extern __thread CPUState *thread_cpu;
 
 extern __thread uint32_t _tpi_thread_tid;
 
+#ifndef CONFIG_USER_ONLY
+#include <exec/cpu_ldst.h>
+#include <exec/cpu-defs.h>
+#include <exec/cpu-all.h>
+
+/* return host address for a guest virtual address.
+ * Inspired by code from include/exec/cpu_ldst_template.h
+ */
+static inline uint64_t get_host_addr_through_mmu(const TCGPluginInterface *tpi,
+                                                 target_ulong ptr)
+{
+    int page_index;
+    target_ulong addr;
+    int mmu_idx;
+
+    addr = ptr;
+    page_index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
+    CPUArchState* env = tpi_current_cpu_arch(tpi);
+    mmu_idx = cpu_mmu_index(env, false);
+    uintptr_t hostaddr = addr + env->tlb_table[mmu_idx][page_index].addend;
+    return hostaddr;
+}
+#endif /* CONFIG_USER_ONLY */
+
+
 static inline FILE *tpi_output(const TCGPluginInterface *tpi)
 {
     return tpi->output;
@@ -104,9 +129,9 @@ static inline uint64_t tpi_guest_ptr(const TCGPluginInterface *tpi, uint64_t gue
     (void)tpi;
     return guest_address + guest_base;
 #else
-    (void)tpi;
-    fprintf(stderr, "qemu: tpi_guest_ptr: fatal error: not implemented in system mode\n");
-    abort();
+    return get_host_addr_through_mmu(tpi, guest_address);
+    //fprintf(stderr, "qemu: tpi_guest_ptr: fatal error: not implemented in system mode\n");
+    //abort();
 #endif
 }
 
@@ -119,9 +144,10 @@ static inline uint64_t tpi_guest_load64(const TCGPluginInterface *tpi, uint64_t 
     val.b = *(__typeof(val.b) *)(guest_address + guest_base);
     return val.v;
 #else
-    (void)tpi;
-    fprintf(stderr, "qemu: tpi_guest_load64: fatal error: not implemented in system mode\n");
-    abort();
+    // not really implemented
+    return 0;
+    //fprintf(stderr, "qemu: tpi_guest_load64: fatal error: not implemented in system mode\n");
+    //abort();
 #endif
 }
 
@@ -134,8 +160,9 @@ static inline uint32_t tpi_guest_load32(const TCGPluginInterface *tpi, uint64_t 
     val.b = *(__typeof(val.b) *)(guest_address + guest_base);
     return val.v;
 #else
-    (void)tpi;
-    fprintf(stderr, "qemu: tpi_guest_load32: fatal error: not implemented in system mode\n");
-    abort();
+    // not really implemented
+    return 0;
+    //fprintf(stderr, "qemu: tpi_guest_load32: fatal error: not implemented in system mode\n");
+    //abort();
 #endif
 }
