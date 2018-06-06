@@ -5,9 +5,18 @@
 #ifdef CONFIG_TCG_PLUGIN_CPP
 #include "cpp/plugin_instrumentation_api.h"
 
+#ifdef CONFIG_USER_ONLY
 /* defined in linux-user/qemu.h */
 extern bool get_mapped_file(uint64_t addr, const char** name,
                             uint64_t* base_addr);
+#else
+static bool get_mapped_file(uint64_t addr, const char** name,
+                            uint64_t* base_addr)
+{
+    return false;
+}
+#endif
+
 
 /* used to retrieve tb information before and after its generation */
 static __thread translation_block** current_block_ptr;

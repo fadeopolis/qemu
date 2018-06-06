@@ -57,8 +57,10 @@ int main(int argc, char **argv)
  * included here. */
 #ifdef CONFIG_TCG_PLUGIN
 extern void tcg_plugin_load(const char *);
+extern void tcg_plugin_initialize_all(void);
 #else
 #define tcg_plugin_load(a) ((void)0)
+#define tcg_plugin_initialize_all() ((void)0)
 #endif
 
 #include "qemu/error-report.h"
@@ -4799,6 +4801,8 @@ int main(int argc, char **argv, char **envp)
         dump_vmstate_json_to_file(vmstate_dump_file);
         return 0;
     }
+
+    tcg_plugin_initialize_all();
 
     if (incoming) {
         Error *local_err = NULL;
