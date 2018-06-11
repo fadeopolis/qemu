@@ -32,7 +32,7 @@
 #include "qemu/memfd.h"
 
 #ifdef CONFIG_MEMFD
-#include <sys/memfd.h>
+#include <sys/mman.h>
 #elif defined CONFIG_LINUX
 #include <sys/syscall.h>
 #include <asm/unistd.h>
