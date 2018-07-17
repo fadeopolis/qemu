@@ -1161,45 +1161,6 @@ static void tcg_plugin_tpi_after_decode_last_instr(TCGPluginInterface *tpi,
     tpi->_in_gen_tpi_helper = false;
 }
 
-static void tcg_plugin_tpi_before_gen_opc(TCGPluginInterface *tpi,
-                                         TCGOpcode opcode, TCGArg *opargs, uint8_t nb_args)
-{
-    TPIOpCode tpi_opcode;
-
-    /* Catch insn_start opcodes to get the current pc. */
-    if (opcode == INDEX_op_insn_start) {
-#if TARGET_LONG_BITS <= TCG_TARGET_REG_BITS
-        tpi->_current_pc = opargs[0];
-#else
-        tpi->_current_pc = (uint64_t)opargs[0] | (uint64_t)opargs[1] << 32;
-#endif
-    }
-
-    if (tpi->_current_pc < tpi->low_pc || tpi->_current_pc >= tpi->high_pc) {
-        return;
-    }
-
-    if (tpi->_in_gen_tpi_helper)
-        return;
-
-    tpi->_in_gen_tpi_helper = true;
-
-    nb_args = MIN(nb_args, TPI_MAX_OP_ARGS);
-
-    tpi_opcode.pc   = tpi->_current_pc;
-    tpi_opcode.cpu_index = tpi_current_cpu_index(tpi);
-    tpi_opcode.nb_args = nb_args;
-
-    tpi_opcode.operator = opcode;
-    tpi_opcode.opcode = NULL;
-    tpi_opcode.opargs = opargs;
-
-    if (tpi->before_gen_opc) {
-        TPI_CALLBACK_NOT_GENERIC(tpi, before_gen_opc, &tpi_opcode);
-    }
-
-    tpi->_in_gen_tpi_helper = false;
-}
 
 static void tcg_plugin_tpi_after_gen_opc(TCGPluginInterface *tpi,
                                          TCGOp *opcode, TCGArg *opargs, uint8_t nb_args)
@@ -1418,26 +1379,6 @@ void tcg_plugin_after_decode_last_instr(CPUState *env, TranslationBlock *tb)
     _gen_tpi_helper_depth--;
 }
 
-
-/* Hook called each time a TCG opcode is generated.  */
-void tcg_plugin_before_gen_opc(TCGOpcode opcode, TCGArg *opargs, uint8_t nb_args)
-{
-    GList *l;
-
-    _gen_tpi_helper_depth++;
-
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
-        TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
-            continue;
-        if (tcg_plugin_initialize(tpi))
-            tcg_plugin_tpi_before_gen_opc(tpi, opcode, opargs, nb_args);
-    }
-
-    assert(_gen_tpi_helper_depth > 0);
-    _gen_tpi_helper_depth--;
-}
 
 /* Hook called each time a TCG opcode is generated.  */
 void tcg_plugin_after_gen_opc(TCGOp *opcode, TCGArg *opargs, uint8_t nb_args)
