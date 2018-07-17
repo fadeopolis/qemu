@@ -28,14 +28,23 @@
 #ifndef TCG_PLUGIN_H
 #define TCG_PLUGIN_H
 
+#include "qemu/osdep.h" /* CONFIG_TCG, CONFIG_TCG_PLUGIN */
+
+#ifdef CONFIG_TCG_PLUGIN
+
 #include <glib.h>
 
-#include "qemu/osdep.h"
 #include "qemu-common.h"
 #include "qom/cpu.h"
 
 #include "tcg.h"
 #include "tcg-op.h"
+/* must be included after "tcg.h" */
+#include "exec/exec-all.h" /* TranslationBlock */
+
+#ifndef CONFIG_TCG
+#  error "CONFIG_TCG_PLUGIN is defined, but CONFIG_TCG is not"
+#endif
 
 #if TARGET_LONG_BITS == 32
 #define MAKE_TCGV MAKE_TCGV_I32
@@ -46,34 +55,18 @@
 /***********************************************************************
  * Hooks inserted into QEMU here and there.
  */
-
-#ifdef CONFIG_TCG_PLUGIN
-    bool tcg_plugin_enabled(void);
-    void tcg_plugin_load(const char *name);
-    void tcg_plugin_initialize_all(void);
-    void tcg_plugin_cpus_stopped(void);
-    void tcg_plugin_before_gen_tb(CPUState *env, TranslationBlock *tb);
-    void tcg_plugin_after_gen_tb(CPUState *env, TranslationBlock *tb);
-    void tcg_plugin_before_decode_first_instr(CPUState *env, TranslationBlock *tb);
-    void tcg_plugin_after_decode_last_instr(CPUState *env, TranslationBlock *tb);
-    bool tcg_plugin_before_decode_instr(TranslationBlock *tb, uint64_t pc);
-    void tcg_plugin_before_gen_opc(TCGOpcode opcode, TCGArg *opargs, uint8_t nb_args);
-    void tcg_plugin_after_gen_opc(TCGOp *opcode, TCGArg *opargs, uint8_t nb_args);
-    const char *tcg_plugin_get_filename(void);
-#else
-#   define tcg_plugin_enabled() false
-#   define tcg_plugin_load(dso)
-#   define tcg_plugin_initialize_all()
-#   define tcg_plugin_cpus_stopped()
-#   define tcg_plugin_before_gen_tb(env, tb)
-#   define tcg_plugin_after_gen_tb(env, tb)
-#   define tcg_plugin_before_decode_first_instr(env, tb)
-#   define tcg_plugin_after_decode_last_instr(env, tb)
-#   define tcg_plugin_before_decode_instr(tb, pc) false
-#   define tcg_plugin_before_gen_opc(tcg_opcode, tcg_opargs_, nb_args)
-#   define tcg_plugin_after_gen_opc(tcg_opcode, tcg_opargs_, nb_args)
-#   define tcg_plugin_get_filename() "<unknown>"
-#endif /* !CONFIG_TCG_PLUGIN */
+  bool tcg_plugin_enabled(void);
+  void tcg_plugin_load(const char *name);
+  void tcg_plugin_initialize_all(void);
+  void tcg_plugin_cpus_stopped(void);
+  void tcg_plugin_before_gen_tb(CPUState *env, TranslationBlock *tb);
+  void tcg_plugin_after_gen_tb(CPUState *env, TranslationBlock *tb);
+  void tcg_plugin_before_decode_first_instr(CPUState *env, TranslationBlock *tb);
+  void tcg_plugin_after_decode_last_instr(CPUState *env, TranslationBlock *tb);
+  bool tcg_plugin_before_decode_instr(TranslationBlock *tb, uint64_t pc);
+  void tcg_plugin_before_gen_opc(TCGOpcode opcode, TCGArg *opargs, uint8_t nb_args);
+  void tcg_plugin_after_gen_opc(TCGOp *opcode, TCGArg *opargs, uint8_t nb_args);
+  const char *tcg_plugin_get_filename(void);
 
 /***********************************************************************
  * TCG plugin interface.
@@ -535,6 +528,21 @@ static inline uint64_t tpi_guest_load64(const TCGPluginInterface *tpi, uint64_t 
 static inline uint32_t tpi_guest_load32(const TCGPluginInterface *tpi, uint64_t guest_address);
 
 #include "tcg-plugin.inc.c"
-#include "exec/exec-all.h" /* TranslationBlock */
+
+#else /* CONFIG_TCG_PLUGIN */
+#   define tcg_plugin_enabled() false
+#   define tcg_plugin_load(dso)
+#   define tcg_plugin_initialize_all()
+#   define tcg_plugin_cpus_stopped()
+#   define tcg_plugin_before_gen_tb(env, tb)
+#   define tcg_plugin_after_gen_tb(env, tb)
+#   define tcg_plugin_before_decode_first_instr(env, tb)
+#   define tcg_plugin_after_decode_last_instr(env, tb)
+#   define tcg_plugin_before_decode_instr(tb, pc) false
+#   define tcg_plugin_before_gen_opc(tcg_opcode, tcg_opargs_, nb_args)
+#   define tcg_plugin_after_gen_opc(tcg_opcode, tcg_opargs_, nb_args)
+#   define tcg_plugin_get_filename() "<unknown>"
+#endif /* !CONFIG_TCG_PLUGIN */
+
 
 #endif /* TCG_PLUGIN_H */

@@ -54,7 +54,11 @@ int main(int argc, char **argv)
 #endif /* CONFIG_COCOA */
 
 /* Provide a forward declaration since "tcg/tcg-plugin.h" can't be
- * included here. */
+ * included here.
+ * "tcg/tcg-plugin.h" can't be included because it transitively includes
+ * "cpu.h", which lives in the target folder, which in turn is not on the
+ * include path for this file (because it is supposed to be target independent).
+ */
 #ifdef CONFIG_TCG_PLUGIN
 extern void tcg_plugin_load(const char *);
 extern void tcg_plugin_initialize_all(void);
