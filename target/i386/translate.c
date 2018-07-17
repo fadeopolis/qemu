@@ -8471,13 +8471,6 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
 
     gen_tb_start(tb);
     for(;;) {
-        /* plugins asked us to end TB */
-        if (tcg_plugin_before_decode_instr(tb, pc_ptr)) {
-            gen_jmp_im(pc_ptr - dc->cs_base);
-            gen_eob(dc);
-            break;
-        }
-
         tcg_gen_insn_start(pc_ptr, dc->cc_op);
         num_insns++;
 

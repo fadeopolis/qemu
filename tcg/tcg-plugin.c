@@ -1140,31 +1140,6 @@ static void tcg_plugin_tpi_before_decode_first_instr(TCGPluginInterface *tpi,
     tpi->_in_gen_tpi_helper = false;
 }
 
-static bool tcg_plugin_tpi_before_decode_instr(TCGPluginInterface *tpi,
-                                               TranslationBlock *tb, uint64_t pc)
-{
-    bool out = false;
-
-    assert(tb);
-
-    if (tb->pc < tpi->low_pc || tb->pc >= tpi->high_pc) {
-        return out;
-    }
-
-    assert(!tpi->_in_gen_tpi_helper);
-    tpi->_in_gen_tpi_helper = true;
-    tpi->tb = tb;
-
-    if (tpi->before_decode_instr) {
-        out |= tpi->before_decode_instr(tpi, tb, pc);
-    }
-
-    tpi->tb = NULL;
-    tpi->_in_gen_tpi_helper = false;
-
-    return out;
-}
-
 
 static void tcg_plugin_tpi_after_decode_last_instr(TCGPluginInterface *tpi,
                                                    CPUState *env, TranslationBlock *tb)
@@ -1396,32 +1371,6 @@ void tcg_plugin_after_gen_tb(CPUState *env, TranslationBlock *tb)
     _gen_tpi_helper_depth--;
 }
 
-/* Hook called before the instruction decoding. */
-/* return true iff we want QEMU to end the TB before decoding at pc */
-bool tcg_plugin_before_decode_instr(TranslationBlock *tb, uint64_t pc)
-{
-    bool out = false;
-
-    _gen_tpi_helper_depth++;
-
-    GList *l;
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
-        TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
-            continue;
-        if (tcg_plugin_initialize(tpi)) {
-            tpi->_current_pc = tb->pc;
-            tpi->_current_tb = tb;
-            out |= tcg_plugin_tpi_before_decode_instr(tpi, tb, pc);
-        }
-    }
-
-    assert(_gen_tpi_helper_depth > 0);
-    _gen_tpi_helper_depth--;
-
-    return out;
-}
 
 /* Hook called before the instruction decoding. */
 void tcg_plugin_before_decode_first_instr(CPUState *env, TranslationBlock *tb)
