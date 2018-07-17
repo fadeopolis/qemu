@@ -860,9 +860,8 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
     tpi->nb_cpus = max_cpus;
     assert(tpi->nb_cpus >= 0);
 
-    tpi->tcg_ctx = &tcg_ctx;
+    tpi->tcg_ctx = tcg_ctx;
     assert(tpi->tcg_ctx != NULL);
-    assert(tpi->tcg_ctx->helpers != NULL);
 
     tpi->output = fdopen(dup(fileno(g_plugins_state.output)), "a");
     setlinebuf(tpi->output);
@@ -1044,16 +1043,16 @@ static void tcg_plugin_tpi_before_gen_tb(TCGPluginInterface *tpi,
         address = tcg_const_i64((uint64_t)tb->pc);
 
         /* Patched in tcg_plugin_after_gen_tb().  */
-        tpi->_tb_info = &tpi->tcg_ctx->gen_opparam_buf[tpi->tcg_ctx->gen_next_parm_idx + 1];
         info = tcg_const_i64(iii++);
+        tpi->_tb_info = &tcg_last_op()->args[1];
 
         /* Patched in tcg_plugin_after_gen_tb().  */
-        tpi->_tb_data1 = &tpi->tcg_ctx->gen_opparam_buf[tpi->tcg_ctx->gen_next_parm_idx + 1];
         data1 = tcg_const_i64(0);
+        tpi->_tb_data1 = &tcg_last_op()->args[1];
 
         /* Patched in tcg_plugin_after_gen_tb().  */
-        tpi->_tb_data2 = &tpi->tcg_ctx->gen_opparam_buf[tpi->tcg_ctx->gen_next_parm_idx + 1];
         data2 = tcg_const_i64(0);
+        tpi->_tb_data2 = &tcg_last_op()->args[1];
 
         gen_helper_tcg_plugin_pre_tb(tpi_ptr, address, info, data1, data2, tb_ptr);
 

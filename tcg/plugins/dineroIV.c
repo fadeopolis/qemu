@@ -150,7 +150,7 @@ static void after_exec_opc(uint64_t info_data, uint64_t address, uint64_t pc)
     }
 }
 
-static void gen_helper(const TCGPluginInterface *tpi, TCGArg *args, int type, uint16_t size, uint64_t pc, int cpu_index);
+static void gen_helper(const TCGPluginInterface *tpi, TCGArg *opargs, int type, uint16_t size, uint64_t pc, int cpu_index);
 
 static void after_gen_opc(const TCGPluginInterface *tpi, const TPIOpCode *tpi_opcode)
 {
@@ -197,20 +197,20 @@ static void after_gen_opc(const TCGPluginInterface *tpi, const TPIOpCode *tpi_op
 static void gen_helper(const TCGPluginInterface *tpi, TCGArg *opargs, int type, uint16_t size, uint64_t pc, int cpu_index)
 {
     access_info_t info = { .type = type, .size = size, .cpu_index = cpu_index };
-    TCGArg args[3];
+    TCGTemp *args[3];
 
     TCGv_i64 tcgv_info = tcg_const_i64(info.data);
     TCGv_i64 tcgv_pc   = tcg_const_i64(pc);
 
-    args[0] = GET_TCGV_I64(tcgv_info);
+    args[0] = tcgv_i64_temp(tcgv_info);
     if (info.type != 'i') {
-        args[1] = opargs[1];
+        args[1] = arg_temp(opargs[1]);
     } else {
-        args[1] = GET_TCGV_I64(tcgv_pc);
+        args[1] = tcgv_i64_temp(tcgv_pc);
     }
-    args[2] = GET_TCGV_I64(tcgv_pc);
+    args[2] = tcgv_i64_temp(tcgv_pc);
 
-    tcg_gen_callN(tpi->tcg_ctx, after_exec_opc, TCG_CALL_DUMMY_ARG, 3, args);
+    tcg_gen_callN(after_exec_opc, TCG_CALL_DUMMY_ARG, 3, args);
 
     tcg_temp_free_i64(tcgv_pc);
     tcg_temp_free_i64(tcgv_info);

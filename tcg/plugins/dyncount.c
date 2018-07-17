@@ -173,17 +173,17 @@ static void update_counter(uint64_t counter_ptr, uint64_t count)
 
 static void gen_update_counter(const TCGPluginInterface *tpi, uint64_t *counter_ptr, uint64_t count)
 {
-    TCGArg args[3];
+    TCGTemp *args[3];
     TCGv_i64 tcgv_counter_ptr;
     TCGv_i64 tcgv_count;
 
     tcgv_counter_ptr = tcg_const_i64((uint64_t)(intptr_t)counter_ptr);
     tcgv_count = tcg_const_i64(1);
 
-    args[0] = GET_TCGV_I64(tcgv_counter_ptr);
-    args[1] = GET_TCGV_I64(tcgv_count);
+    args[0] = tcgv_i64_temp(tcgv_counter_ptr);
+    args[1] = tcgv_i64_temp(tcgv_count);
 
-    tcg_gen_callN(tpi->tcg_ctx, update_counter, TCG_CALL_DUMMY_ARG, 2, args);
+    tcg_gen_callN(update_counter, TCG_CALL_DUMMY_ARG, 2, args);
 
     tcg_temp_free_i64(tcgv_counter_ptr);
     tcg_temp_free_i64(tcgv_count);

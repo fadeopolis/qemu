@@ -4,7 +4,6 @@ python:
   - "2.4"
 compiler:
   - gcc
-sudo: required
 cache: ccache
 addons:
   apt:
@@ -65,9 +64,6 @@ before_install:
   - if [ "$TRAVIS_OS_NAME" == "osx" ]; then brew install libffi gettext glib pixman ; fi
   - wget -O - http://people.linaro.org/~alex.bennee/qemu-submodule-git-seed.tar.xz | tar -xvJ
   - git submodule update --init --recursive
-  - wget http://fr.archive.ubuntu.com/ubuntu/pool/universe/c/capstone/libcapstone3_3.0.4-0.2_amd64.deb
-  - wget http://fr.archive.ubuntu.com/ubuntu/pool/universe/c/capstone/libcapstone-dev_3.0.4-0.2_amd64.deb
-  - sudo dpkg -i libcapstone3_3.0.4-0.2_amd64.deb libcapstone-dev_3.0.4-0.2_amd64.deb
 before_script:
   - ./configure ${CONFIG}
 script:
@@ -96,10 +92,9 @@ matrix:
     - env: CONFIG="--disable-tcg"
            TEST_CMD=""
       compiler: gcc
-    # deactivate for plugins - no dpkg
-    #- env: CONFIG=""
-    #os: osx
-    #compiler: clang
+    - env: CONFIG=""
+      os: osx
+      compiler: clang
     # Plain Trusty System Build
     - env: CONFIG="--disable-linux-user"
       sudo: required

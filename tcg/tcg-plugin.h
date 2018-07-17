@@ -296,8 +296,6 @@ struct TCGPluginInterface
      tcg_gen_callN(tpi->tcg_ctx, myfunction, GET_TCGV_I64(tcgv_ret), 2, args);
      ...
    }
-   Implementation note: the structure defined in _TPI_TCGHelperInfo_struct
-   must match TCGHelperInfo in tcg.c.
  */
 
 #define TPI_DECL_FUNC_0(tpi, NAME, ret) \
@@ -306,8 +304,7 @@ struct TCGPluginInterface
         static const TCGHelperInfo _info =                               \
             { .func = NAME, .name = #NAME, .flags = FLAGS,               \
               .sizemask = dh_sizemask(ret, 0) };                         \
-        g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func, \
-                            (gpointer)&_info);                           \
+        tcg_define_helper(&_info);                                       \
     } while(0)
 
 #define TPI_DECL_FUNC_1(tpi, NAME, ret, t1)             \
@@ -316,8 +313,7 @@ struct TCGPluginInterface
         static const TCGHelperInfo _info =                               \
             { .func = NAME, .name = #NAME, .flags = FLAGS,               \
               .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1) };    \
-        g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func, \
-                            (gpointer)&_info);                           \
+        tcg_define_helper(&_info);                                       \
     } while(0)
 
 #define TPI_DECL_FUNC_2(tpi, NAME, ret, t1, t2)         \
@@ -327,8 +323,7 @@ struct TCGPluginInterface
             { .func = NAME, .name = #NAME, .flags = FLAGS,               \
               .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)       \
               | dh_sizemask(t2, 2) };                                    \
-        g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func, \
-                            (gpointer)&_info);                           \
+        tcg_define_helper(&_info);                                       \
     } while(0)
 
 #define TPI_DECL_FUNC_3(tpi, NAME, ret, t1, t2, t3) \
@@ -338,8 +333,7 @@ struct TCGPluginInterface
             { .func = NAME, .name = #NAME, .flags = FLAGS,               \
               .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)       \
               | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) };               \
-        g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func, \
-                            (gpointer)&_info);                           \
+        tcg_define_helper(&_info);                                       \
     } while(0)
 
 #define TPI_DECL_FUNC_4(tpi, NAME, ret, t1, t2, t3, t4)                 \
@@ -349,8 +343,7 @@ struct TCGPluginInterface
             { .func = NAME, .name = #NAME, .flags = FLAGS,                      \
               .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)              \
               | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) | dh_sizemask(t4, 4) }; \
-        g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func,        \
-                            (gpointer)&_info);                                  \
+        tcg_define_helper(&_info);                                              \
     } while(0)
 
 #define TPI_DECL_FUNC_5(tpi, NAME, ret, t1, t2, t3, t4, t5)             \
@@ -361,8 +354,7 @@ struct TCGPluginInterface
               .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)            \
               | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) | dh_sizemask(t4, 4)  \
               | dh_sizemask(t5, 5) };                                         \
-        g_hash_table_insert(tpi->tcg_ctx->helpers, (gpointer)_info.func,      \
-                            (gpointer)&_info);                                \
+        tcg_define_helper(&_info);                                            \
     } while(0)
 
 

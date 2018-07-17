@@ -96,7 +96,7 @@ static void write_str(uint64_t str_intptr)
 
 static void gen_printf_insn(const TCGPluginInterface *tpi, cs_insn *insn)
 {
-    TCGArg args[1];
+    TCGTemp *args[1];
     TCGv_i64 tcgv_str;
     size_t size = MAX_PRINT_SIZE*sizeof(char);
     size_t left;
@@ -126,9 +126,9 @@ static void gen_printf_insn(const TCGPluginInterface *tpi, cs_insn *insn)
 
     tcgv_str = tcg_const_i64((uint64_t)(intptr_t)str);
 
-    args[0] = GET_TCGV_I64(tcgv_str);
+    args[0] = tcgv_i64_temp(tcgv_str);
 
-    tcg_gen_callN(tpi->tcg_ctx, write_str, TCG_CALL_DUMMY_ARG, 1, args);
+    tcg_gen_callN(write_str, TCG_CALL_DUMMY_ARG, 1, args);
 
     tcg_temp_free_i64(tcgv_str);
 }

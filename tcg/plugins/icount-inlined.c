@@ -60,10 +60,11 @@ static void before_gen_tb(const TCGPluginInterface *tpi)
     icount_tmp = tcg_temp_new_i64();
     tcg_gen_ld_i64(icount_tmp, icount_ptr, 0);
 
-    /* icount_args = &tb_icount32 */
     /* tb_icount32 = fixup(tb->icount) */
-    icount_total_args[tpi_current_cpu_index(tpi)] = &tpi->tcg_ctx->gen_opparam_buf[tpi->tcg_ctx->gen_next_parm_idx + 1];
+    /* icount_args = &tb_icount32 */
+
     tb_icount32 = tcg_const_i32(0);
+    icount_total_args[tpi_current_cpu_index(tpi)] = &tcg_last_op()->args[1];
 
     /* tb_icount64 = (int64_t)tb_icount32 */
     tb_icount64 = tcg_temp_new_i64();

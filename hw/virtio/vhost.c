@@ -70,7 +70,7 @@ static void vhost_dev_sync_region(struct vhost_dev *dev,
     uint64_t end = MIN(mlast, rlast);
     vhost_log_chunk_t *from = log + start / VHOST_LOG_CHUNK;
     vhost_log_chunk_t *to = log + end / VHOST_LOG_CHUNK + 1;
-    uint64_t addr = (start / VHOST_LOG_CHUNK) * VHOST_LOG_CHUNK;
+    uint64_t addr = QEMU_ALIGN_DOWN(start, VHOST_LOG_CHUNK);
 
     if (end < start) {
         return;
@@ -375,8 +375,6 @@ static void vhost_log_put(struct vhost_dev *dev, bool sync)
     if (!log) {
         return;
     }
-    dev->log = NULL;
-    dev->log_size = 0;
 
     --log->refcnt;
     if (log->refcnt == 0) {
@@ -396,6 +394,9 @@ static void vhost_log_put(struct vhost_dev *dev, bool sync)
 
         g_free(log);
     }
+
+    dev->log = NULL;
+    dev->log_size = 0;
 }
 
 static bool vhost_dev_log_is_shared(struct vhost_dev *dev)

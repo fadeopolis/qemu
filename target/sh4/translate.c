@@ -70,7 +70,6 @@ enum {
 };
 
 /* global register indexes */
-static TCGv_env cpu_env;
 static TCGv cpu_gregs[32];
 static TCGv cpu_sr, cpu_sr_m, cpu_sr_q, cpu_sr_t;
 static TCGv cpu_pc, cpu_ssr, cpu_spc, cpu_gbr;
@@ -90,8 +89,10 @@ static TCGv gUSA_end;
 
 void sh4_translate_init(void)
 {
-    int i;
+#if defined(CONFIG_USER_ONLY)
     static int done_init = 0;
+#endif
+    int i;
     static const char * const gregnames[24] = {
         "R0_BANK0", "R1_BANK0", "R2_BANK0", "R3_BANK0",
         "R4_BANK0", "R5_BANK0", "R6_BANK0", "R7_BANK0",
@@ -109,13 +110,6 @@ void sh4_translate_init(void)
          "FPR8_BANK1",  "FPR9_BANK1", "FPR10_BANK1", "FPR11_BANK1",
         "FPR12_BANK1", "FPR13_BANK1", "FPR14_BANK1", "FPR15_BANK1",
     };
-
-    if (done_init) {
-        return;
-    }
-
-    cpu_env = tcg_global_reg_new_ptr(TCG_AREG0, "env");
-    tcg_ctx.tcg_env = cpu_env;
 
     for (i = 0; i < 24; i++) {
         cpu_gregs[i] = tcg_global_mem_new_i32(cpu_env,
@@ -177,10 +171,11 @@ void sh4_translate_init(void)
 #if defined(CONFIG_USER_ONLY)
     gUSA_end = tcg_global_mem_new_i32(cpu_env,
 				      offsetof(CPUSH4State, gUSA_end), "gUSA_end");
-    qemu_mutex_init(&gUSA_mutex);
+    if (!done_init) {
+      qemu_mutex_init(&gUSA_mutex);
+      done_init = 1;
+    }
 #endif
-
-    done_init = 1;
 }
 
 void superh_cpu_dump_state(CPUState *cs, FILE *f,
@@ -277,7 +272,7 @@ static void gen_goto_tb(DisasContext *ctx, int n, target_ulong dest)
         } else if (use_exit_tb(ctx)) {
             tcg_gen_exit_tb(0);
         } else {
-            tcg_gen_lookup_and_goto_ptr(cpu_pc);
+            tcg_gen_lookup_and_goto_ptr();
         }
     }
 }
@@ -294,7 +289,7 @@ static void gen_jump(DisasContext * ctx)
         } else if (use_exit_tb(ctx)) {
             tcg_gen_exit_tb(0);
         } else {
-            tcg_gen_lookup_and_goto_ptr(cpu_pc);
+            tcg_gen_lookup_and_goto_ptr();
         }
     } else {
 	gen_goto_tb(ctx, 0, ctx->delayed_pc);
@@ -544,7 +539,7 @@ static void _decode_opc(DisasContext * ctx)
         /* Detect the start of a gUSA region.  If so, update envflags
            and end the TB.  This will allow us to see the end of the
            region (stored in R0) in the next TB.  */
-        if (B11_8 == 15 && B7_0s < 0 && parallel_cpus) {
+        if (B11_8 == 15 && B7_0s < 0 && (tb_cflags(ctx->tb) & CF_PARALLEL)) {
             ctx->envflags = deposit32(ctx->envflags, GUSA_SHIFT, 8, B7_0s);
             ctx->bstate = BS_STOP;
         }
@@ -630,6 +625,7 @@ static void _decode_opc(DisasContext * ctx)
 	    tcg_gen_subi_i32(addr, REG(B11_8), 4);
             tcg_gen_qemu_st_i32(REG(B7_4), addr, ctx->memidx, MO_TEUL);
 	    tcg_gen_mov_i32(REG(B11_8), addr);
+        tcg_temp_free(addr);
 	}
 	return;
     case 0x6004:		/* mov.b @Rm+,Rn */
@@ -1557,6 +1553,7 @@ static void _decode_opc(DisasContext * ctx)
             tcg_gen_qemu_ld_i32(val, REG(B11_8), ctx->memidx, MO_TEUL);
             gen_helper_movcal(cpu_env, REG(B11_8), val);
             tcg_gen_qemu_st_i32(REG(0), REG(B11_8), ctx->memidx, MO_TEUL);
+            tcg_temp_free(val);
         }
         ctx->has_movcal = 1;
 #endif
@@ -2223,7 +2220,7 @@ static int decode_gusa(DisasContext *ctx, CPUSH4State *env, int *pmax_insns)
     }
 
     /* If op_src is not a valid register, then op_arg was a constant.  */
-    if (op_src < 0) {
+    if (op_src < 0 && !TCGV_IS_UNUSED(op_arg)) {
         tcg_temp_free_i32(op_arg);
     }
 
@@ -2278,7 +2275,7 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
                  (ctx.tbflags & (1 << SR_RB))) * 0x10;
     ctx.fbank = ctx.tbflags & FPSCR_FR ? 0x10 : 0;
 
-    max_insns = tb->cflags & CF_COUNT_MASK;
+    max_insns = tb_cflags(tb) & CF_COUNT_MASK;
     if (max_insns == 0) {
         max_insns = CF_COUNT_MASK;
     }
@@ -2322,7 +2319,7 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
             break;
         }
 
-        if (num_insns == max_insns && (tb->cflags & CF_LAST_IO)) {
+        if (num_insns == max_insns && (tb_cflags(tb) & CF_LAST_IO)) {
             gen_io_start();
         }
 
@@ -2338,7 +2335,7 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
 
 	ctx.pc += 2;
     }
-    if (tb->cflags & CF_LAST_IO) {
+    if (tb_cflags(tb) & CF_LAST_IO) {
         gen_io_end();
     }
 
@@ -2378,7 +2375,7 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
         && qemu_log_in_addr_range(pc_start)) {
         qemu_log_lock();
 	qemu_log("IN:\n");	/* , lookup_symbol(pc_start)); */
-        log_target_disas(cs, pc_start, ctx.pc - pc_start, 0);
+        log_target_disas(cs, pc_start, ctx.pc - pc_start);
 	qemu_log("\n");
         qemu_log_unlock();
     }

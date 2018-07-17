@@ -128,9 +128,9 @@ static void after_gen_opc(
     }
 
     // insert call to after_exec_opc
-    TCGArg args[] = {
-        GET_TCGV_I64(tcg_const_i64((uint64_t)&address_table_entry->count)) };
-    tcg_gen_callN(tpi->tcg_ctx, after_exec_opc, TCG_CALL_DUMMY_ARG, 1, args);
+    TCGTemp *args[] = {
+        tcgv_i64_temp(tcg_const_i64((uint64_t)&address_table_entry->count)) };
+    tcg_gen_callN(after_exec_opc, TCG_CALL_DUMMY_ARG, 1, args);
 }
 
 static void output_symbol_coverage(

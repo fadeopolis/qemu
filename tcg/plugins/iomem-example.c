@@ -89,22 +89,20 @@ static void after_gen_opc(const TCGPluginInterface *tpi, const TPIOpCode *tpi_op
     size = 1 << (opc & MO_SIZE);
     sign = (opc & MO_SIGN) != 0 ? -1: 1;
 
-    TCGArg args[3];
+    TCGTemp *args[3];
     TCGv_i64 tcgv_ret = tcg_temp_new_i64();
     TCGv_i32 tcgv_size = tcg_const_i32(size * sign);
 
-    args[0] = tpi_opcode->opargs[0]; /* value loaded */
-    args[1] = tpi_opcode->opargs[1]; /* address */
-    args[2] = GET_TCGV_I32(tcgv_size); /* sign * size constant */
+    args[0] = arg_temp(tpi_opcode->opargs[0]); /* value loaded */
+    args[1] = arg_temp(tpi_opcode->opargs[1]); /* address */
+    args[2] = tcgv_i32_temp(tcgv_size); /* sign * size constant */
 
     /* get possibly modified value in tcgv_ret. */
-    tcg_gen_callN(tpi->tcg_ctx, after_exec_opc,
-                  GET_TCGV_I64(tcgv_ret),
-                  3, args); 
+    tcg_gen_callN(after_exec_opc, tcgv_i64_temp(tcgv_ret), 3, args);
     tcg_temp_free_i32(tcgv_size);
 
     /* overwrite destination register. */
-    tcg_gen_mov_i64(MAKE_TCGV_I64(tpi_opcode->opargs[0]), tcgv_ret);
+    tcg_gen_mov_i64(temp_tcgv_i64(arg_temp(tpi_opcode->opargs[0])), tcgv_ret);
     tcg_temp_free_i64(tcgv_ret);
 
 }

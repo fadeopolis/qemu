@@ -422,6 +422,7 @@ static RxFilterInfo *virtio_net_query_rxfilter(NetClientState *nc)
 static void virtio_net_reset(VirtIODevice *vdev)
 {
     VirtIONet *n = VIRTIO_NET(vdev);
+    int i;
 
     /* Reset back to compatibility mode */
     n->promisc = 1;
@@ -445,6 +446,16 @@ static void virtio_net_reset(VirtIODevice *vdev)
     memcpy(&n->mac[0], &n->nic->conf->macaddr, sizeof(n->mac));
     qemu_format_nic_info_str(qemu_get_queue(n->nic), n->mac);
     memset(n->vlans, 0, MAX_VLAN >> 3);
+
+    /* Flush any async TX */
+    for (i = 0;  i < n->max_queues; i++) {
+        NetClientState *nc = qemu_get_subqueue(n->nic, i);
+
+        if (nc->peer) {
+            qemu_flush_or_purge_queued_packets(nc->peer, true);
+            assert(!virtio_net_get_subqueue(nc)->async_tx.elem);
+        }
+    }
 }
 
 static void peer_test_vnet_hdr(VirtIONet *n)
@@ -1713,7 +1724,7 @@ struct VirtIONetMigTmp {
  * pointer and count and also validate the count.
  */
 
-static void virtio_net_tx_waiting_pre_save(void *opaque)
+static int virtio_net_tx_waiting_pre_save(void *opaque)
 {
     struct VirtIONetMigTmp *tmp = opaque;
 
@@ -1722,6 +1733,8 @@ static void virtio_net_tx_waiting_pre_save(void *opaque)
     if (tmp->parent->curr_queues == 0) {
         tmp->curr_queues_1 = 0;
     }
+
+    return 0;
 }
 
 static int virtio_net_tx_waiting_pre_load(void *opaque)
@@ -1769,11 +1782,13 @@ static int virtio_net_ufo_post_load(void *opaque, int version_id)
     return 0;
 }
 
-static void virtio_net_ufo_pre_save(void *opaque)
+static int virtio_net_ufo_pre_save(void *opaque)
 {
     struct VirtIONetMigTmp *tmp = opaque;
 
     tmp->has_ufo = tmp->parent->has_ufo;
+
+    return 0;
 }
 
 static const VMStateDescription vmstate_virtio_net_has_ufo = {
@@ -1801,11 +1816,13 @@ static int virtio_net_vnet_post_load(void *opaque, int version_id)
     return 0;
 }
 
-static void virtio_net_vnet_pre_save(void *opaque)
+static int virtio_net_vnet_pre_save(void *opaque)
 {
     struct VirtIONetMigTmp *tmp = opaque;
 
     tmp->has_vnet_hdr = tmp->parent->has_vnet_hdr;
+
+    return 0;
 }
 
 static const VMStateDescription vmstate_virtio_net_has_vnet = {
@@ -2080,13 +2097,15 @@ static void virtio_net_instance_init(Object *obj)
                                   DEVICE(n), NULL);
 }
 
-static void virtio_net_pre_save(void *opaque)
+static int virtio_net_pre_save(void *opaque)
 {
     VirtIONet *n = opaque;
 
     /* At this point, backend must be stopped, otherwise
      * it might keep writing to memory. */
     assert(!n->vhost_started);
+
+    return 0;
 }
 
 static const VMStateDescription vmstate_virtio_net = {
