@@ -82,7 +82,6 @@ TRACE_HEADERS += trace-ust-root.h $(trace-events-subdirs:%=%/trace-ust.h)
 endif
 
 GENERATED_FILES += syscall_fwd_compat.h
-GENERATED_FILES += module_block.h
 GENERATED_FILES += $(TRACE_HEADERS)
 GENERATED_FILES += $(TRACE_SOURCES)
 GENERATED_FILES += $(BUILD_DIR)/trace-events-all

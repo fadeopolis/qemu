@@ -119,9 +119,6 @@ int __clone2(int (*fn)(void *), void *child_stack_base,
 /* Enable syscall forward compatibility if requested. */
 #include "syscall_fwd_compat.h"
 
-#define CLONE_NPTL_FLAGS2 (CLONE_SETTLS | \
-    CLONE_PARENT_SETTID | CLONE_CHILD_SETTID | CLONE_CHILD_CLEARTID)
-
 #ifndef CLONE_IO
 #define CLONE_IO                0x80000000      /* Clone io context */
 #endif

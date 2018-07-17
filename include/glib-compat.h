@@ -286,15 +286,6 @@ static inline gboolean g_hash_table_contains(GHashTable *hash_table,
     } while (0)
 #endif
 
-#if !GLIB_CHECK_VERSION(2, 8, 0)
-#define g_try_malloc0(n_bytes) ({			 \
-    gsize n = (n_bytes);				 \
-    gpointer ptr;					 \
-    ptr = g_try_malloc(n);				 \
-    ptr == NULL ? ptr : memset(ptr, 0, n_bytes);	 \
-})
-#endif
-
 #if !GLIB_CHECK_VERSION(2, 28, 0)
 static inline void g_list_free_full(GList *list, GDestroyNotify free_func)
 {

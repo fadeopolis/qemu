@@ -986,10 +986,6 @@ void sdl_display_init(DisplayState *ds, int full_screen, int no_frame)
      * This requires SDL >= 1.2.14. */
     setenv("SDL_DISABLE_LOCK_KEYS", "1", 1);
 
-    /* Enable normal up/down events for Caps-Lock and Num-Lock keys.
-     * This requires SDL >= 1.2.14. */
-    setenv("SDL_DISABLE_LOCK_KEYS", "1", 1);
-
     flags = SDL_INIT_VIDEO | SDL_INIT_NOPARACHUTE;
     if (SDL_Init (flags)) {
         fprintf(stderr, "Could not initialize SDL(%s) - exiting\n",
