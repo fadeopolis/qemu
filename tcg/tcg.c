@@ -1353,7 +1353,8 @@ void tcg_dump_op_2(TCGContext *s, TCGOpcode opcode, const TCGArg *args, int nb_a
   const TCGOpDef *def = &tcg_op_defs[opcode];
 
   if (opcode == INDEX_op_insn_start) {
-    for (int i = 0; i < TARGET_INSN_START_WORDS; ++i) {
+    int i;
+    for (i = 0; i < TARGET_INSN_START_WORDS; ++i) {
       target_ulong a;
 #if TARGET_LONG_BITS > TCG_TARGET_REG_BITS
       a = ((target_ulong)args[i * 2 + 1] << 32) | args[i * 2];
@@ -1364,6 +1365,7 @@ void tcg_dump_op_2(TCGContext *s, TCGOpcode opcode, const TCGArg *args, int nb_a
     }
   } else if (opcode == INDEX_op_call) {
     char buf[128];
+    int i;
 
     assert(nb_args >= 2);
 
@@ -1378,7 +1380,7 @@ void tcg_dump_op_2(TCGContext *s, TCGOpcode opcode, const TCGArg *args, int nb_a
       def->name, function, flags, nb_io_args);
 
     /* out args */
-    for (int i = 0; i < nb_io_args; i++) {
+    for (i = 0; i < nb_io_args; i++) {
       TCGArg arg = args[i];
 
       const char *t = "<dummy>";
