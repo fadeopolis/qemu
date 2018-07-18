@@ -2,7 +2,6 @@
 #define QDEV_CORE_H
 
 #include "qemu/queue.h"
-#include "qemu/option.h"
 #include "qemu/bitmap.h"
 #include "qom/object.h"
 #include "hw/irq.h"
@@ -286,6 +285,7 @@ DeviceState *qdev_try_create(BusState *bus, const char *name);
 void qdev_init_nofail(DeviceState *dev);
 void qdev_set_legacy_instance_id(DeviceState *dev, int alias_id,
                                  int required_for_version);
+HotplugHandler *qdev_get_machine_hotplug_handler(DeviceState *dev);
 HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev);
 void qdev_unplug(DeviceState *dev, Error **errp);
 void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
@@ -311,10 +311,36 @@ BusState *qdev_get_child_bus(DeviceState *dev, const char *name);
 /* GPIO inputs also double as IRQ sinks.  */
 void qdev_init_gpio_in(DeviceState *dev, qemu_irq_handler handler, int n);
 void qdev_init_gpio_out(DeviceState *dev, qemu_irq *pins, int n);
-void qdev_init_gpio_in_named(DeviceState *dev, qemu_irq_handler handler,
-                             const char *name, int n);
 void qdev_init_gpio_out_named(DeviceState *dev, qemu_irq *pins,
                               const char *name, int n);
+/**
+ * qdev_init_gpio_in_named_with_opaque: create an array of input GPIO lines
+ *   for the specified device
+ *
+ * @dev: Device to create input GPIOs for
+ * @handler: Function to call when GPIO line value is set
+ * @opaque: Opaque data pointer to pass to @handler
+ * @name: Name of the GPIO input (must be unique for this device)
+ * @n: Number of GPIO lines in this input set
+ */
+void qdev_init_gpio_in_named_with_opaque(DeviceState *dev,
+                                         qemu_irq_handler handler,
+                                         void *opaque,
+                                         const char *name, int n);
+
+/**
+ * qdev_init_gpio_in_named: create an array of input GPIO lines
+ *   for the specified device
+ *
+ * Like qdev_init_gpio_in_named_with_opaque(), but the opaque pointer
+ * passed to the handler is @dev (which is the most commonly desired behaviour).
+ */
+static inline void qdev_init_gpio_in_named(DeviceState *dev,
+                                           qemu_irq_handler handler,
+                                           const char *name, int n)
+{
+    qdev_init_gpio_in_named_with_opaque(dev, handler, dev, name, n);
+}
 
 void qdev_pass_gpios(DeviceState *dev, DeviceState *container,
                      const char *name);

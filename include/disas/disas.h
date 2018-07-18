@@ -51,7 +51,5 @@ struct syminfo {
 /* Filled in by elfload.c.  Simplistic, but will do for now. */
 extern struct syminfo *syminfos;
 extern uint64_t find_symbol(const char *name, int is_elf_class64);
-extern uint64_t exit_code;
-extern uint64_t exit_addr;
 
 #endif /* QEMU_DISAS_H */

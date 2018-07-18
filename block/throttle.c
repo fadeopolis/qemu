@@ -19,6 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "block/throttle-groups.h"
+#include "qemu/option.h"
 #include "qemu/throttle-options.h"
 #include "qapi/error.h"
 
@@ -35,12 +36,9 @@ static QemuOptsList throttle_opts = {
     },
 };
 
-/*
- * If this function succeeds then the throttle group name is stored in
- * @group and must be freed by the caller.
- * If there's an error then @group remains unmodified.
- */
-static int throttle_parse_options(QDict *options, char **group, Error **errp)
+static int throttle_configure_tgm(BlockDriverState *bs,
+                                  ThrottleGroupMember *tgm,
+                                  QDict *options, Error **errp)
 {
     int ret;
     const char *group_name;
@@ -65,7 +63,8 @@ static int throttle_parse_options(QDict *options, char **group, Error **errp)
         goto fin;
     }
 
-    *group = g_strdup(group_name);
+    /* Register membership to group with name group_name */
+    throttle_group_register_tgm(tgm, group_name, bdrv_get_aio_context(bs));
     ret = 0;
 fin:
     qemu_opts_del(opts);
@@ -76,8 +75,6 @@ static int throttle_open(BlockDriverState *bs, QDict *options,
                          int flags, Error **errp)
 {
     ThrottleGroupMember *tgm = bs->opaque;
-    char *group;
-    int ret;
 
     bs->file = bdrv_open_child(NULL, options, "file", bs,
                                &child_file, false, errp);
@@ -87,14 +84,7 @@ static int throttle_open(BlockDriverState *bs, QDict *options,
     bs->supported_write_flags = bs->file->bs->supported_write_flags;
     bs->supported_zero_flags = bs->file->bs->supported_zero_flags;
 
-    ret = throttle_parse_options(options, &group, errp);
-    if (ret == 0) {
-        /* Register membership to group with name group_name */
-        throttle_group_register_tgm(tgm, group, bdrv_get_aio_context(bs));
-        g_free(group);
-    }
-
-    return ret;
+    return throttle_configure_tgm(bs, tgm, options, errp);
 }
 
 static void throttle_close(BlockDriverState *bs)
@@ -170,36 +160,35 @@ static void throttle_attach_aio_context(BlockDriverState *bs,
 static int throttle_reopen_prepare(BDRVReopenState *reopen_state,
                                    BlockReopenQueue *queue, Error **errp)
 {
-    int ret;
-    char *group = NULL;
+    ThrottleGroupMember *tgm;
 
     assert(reopen_state != NULL);
     assert(reopen_state->bs != NULL);
 
-    ret = throttle_parse_options(reopen_state->options, &group, errp);
-    reopen_state->opaque = group;
-    return ret;
+    reopen_state->opaque = g_new0(ThrottleGroupMember, 1);
+    tgm = reopen_state->opaque;
+
+    return throttle_configure_tgm(reopen_state->bs, tgm, reopen_state->options,
+            errp);
 }
 
 static void throttle_reopen_commit(BDRVReopenState *reopen_state)
 {
-    BlockDriverState *bs = reopen_state->bs;
-    ThrottleGroupMember *tgm = bs->opaque;
-    char *group = reopen_state->opaque;
+    ThrottleGroupMember *old_tgm = reopen_state->bs->opaque;
+    ThrottleGroupMember *new_tgm = reopen_state->opaque;
 
-    assert(group);
-
-    if (strcmp(group, throttle_group_get_name(tgm))) {
-        throttle_group_unregister_tgm(tgm);
-        throttle_group_register_tgm(tgm, group, bdrv_get_aio_context(bs));
-    }
-    g_free(reopen_state->opaque);
+    throttle_group_unregister_tgm(old_tgm);
+    g_free(old_tgm);
+    reopen_state->bs->opaque = new_tgm;
     reopen_state->opaque = NULL;
 }
 
 static void throttle_reopen_abort(BDRVReopenState *reopen_state)
 {
-    g_free(reopen_state->opaque);
+    ThrottleGroupMember *tgm = reopen_state->opaque;
+
+    throttle_group_unregister_tgm(tgm);
+    g_free(tgm);
     reopen_state->opaque = NULL;
 }
 
@@ -226,10 +215,9 @@ static void coroutine_fn throttle_co_drain_end(BlockDriverState *bs)
 
 static BlockDriver bdrv_throttle = {
     .format_name                        =   "throttle",
-    .protocol_name                      =   "throttle",
     .instance_size                      =   sizeof(ThrottleGroupMember),
 
-    .bdrv_file_open                     =   throttle_open,
+    .bdrv_open                          =   throttle_open,
     .bdrv_close                         =   throttle_close,
     .bdrv_co_flush                      =   throttle_co_flush,
 
@@ -251,7 +239,7 @@ static BlockDriver bdrv_throttle = {
     .bdrv_reopen_prepare                =   throttle_reopen_prepare,
     .bdrv_reopen_commit                 =   throttle_reopen_commit,
     .bdrv_reopen_abort                  =   throttle_reopen_abort,
-    .bdrv_co_get_block_status           =   bdrv_co_get_block_status_from_file,
+    .bdrv_co_block_status               =   bdrv_co_block_status_from_file,
 
     .bdrv_co_drain_begin                =   throttle_co_drain_begin,
     .bdrv_co_drain_end                  =   throttle_co_drain_end,

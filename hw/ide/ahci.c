@@ -24,7 +24,6 @@
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/pci/msi.h"
-#include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
 
 #include "qemu/error-report.h"
@@ -532,6 +531,13 @@ static void ahci_check_cmd_bh(void *opaque)
 
     qemu_bh_delete(ad->check_bh);
     ad->check_bh = NULL;
+
+    if ((ad->busy_slot != -1) &&
+        !(ad->port.ifs[0].status & (BUSY_STAT|DRQ_STAT))) {
+        /* no longer busy */
+        ad->port_regs.cmd_issue &= ~(1 << ad->busy_slot);
+        ad->busy_slot = -1;
+    }
 
     check_cmd(ad->hba, ad->port_no);
 }
@@ -1046,7 +1052,7 @@ static void process_ncq_command(AHCIState *s, int port, uint8_t *cmd_fis,
     g_assert(is_ncq(ncq_fis->command));
     if (ncq_tfs->used) {
         /* error - already in use */
-        fprintf(stderr, "%s: tag %d already used\n", __FUNCTION__, tag);
+        fprintf(stderr, "%s: tag %d already used\n", __func__, tag);
         return;
     }
 
@@ -1418,12 +1424,6 @@ static void ahci_cmd_done(IDEDMA *dma)
     AHCIDevice *ad = DO_UPCAST(AHCIDevice, dma, dma);
 
     trace_ahci_cmd_done(ad->hba, ad->port_no);
-
-    /* no longer busy */
-    if (ad->busy_slot != -1) {
-        ad->port_regs.cmd_issue &= ~(1 << ad->busy_slot);
-        ad->busy_slot = -1;
-    }
 
     /* update d2h status */
     ahci_write_fis_d2h(ad);

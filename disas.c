@@ -84,11 +84,6 @@ bool find_symbol_bounds(const char *name, bool is_elf_class64, uint64_t *start, 
   return false;
 }
 
-/* On ARM, semi-hosting has no room for application exit code. To work
-   around this, when we start executing exit(), we take note of its
-   parameter, which will be used as return code.  */
-uint64_t exit_code = 0;
-uint64_t exit_addr = 0;
 
 /* Get LENGTH bytes from info's buffer, at target address memaddr.
    Transfer them to myaddr.  */
@@ -596,6 +591,8 @@ void disas(FILE *out, void *code, unsigned long size)
 # ifdef _ARCH_PPC64
     s.info.cap_mode = CS_MODE_64;
 # endif
+#elif defined(__riscv__)
+    print_insn = print_insn_riscv;
 #elif defined(__aarch64__) && defined(CONFIG_ARM_A64_DIS)
     print_insn = print_insn_arm_a64;
     s.info.cap_arch = CS_ARCH_ARM64;

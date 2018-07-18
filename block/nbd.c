@@ -32,11 +32,11 @@
 #include "qemu/uri.h"
 #include "block/block_int.h"
 #include "qemu/module.h"
-#include "qapi-visit.h"
+#include "qemu/option.h"
+#include "qapi/qapi-visit-sockets.h"
 #include "qapi/qobject-input-visitor.h"
 #include "qapi/qobject-output-visitor.h"
 #include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qjson.h"
 #include "qapi/qmp/qstring.h"
 #include "qemu/cutils.h"
 
@@ -585,6 +585,7 @@ static BlockDriver bdrv_nbd = {
     .bdrv_detach_aio_context    = nbd_detach_aio_context,
     .bdrv_attach_aio_context    = nbd_attach_aio_context,
     .bdrv_refresh_filename      = nbd_refresh_filename,
+    .bdrv_co_block_status       = nbd_client_co_block_status,
 };
 
 static BlockDriver bdrv_nbd_tcp = {
@@ -604,6 +605,7 @@ static BlockDriver bdrv_nbd_tcp = {
     .bdrv_detach_aio_context    = nbd_detach_aio_context,
     .bdrv_attach_aio_context    = nbd_attach_aio_context,
     .bdrv_refresh_filename      = nbd_refresh_filename,
+    .bdrv_co_block_status       = nbd_client_co_block_status,
 };
 
 static BlockDriver bdrv_nbd_unix = {
@@ -623,6 +625,7 @@ static BlockDriver bdrv_nbd_unix = {
     .bdrv_detach_aio_context    = nbd_detach_aio_context,
     .bdrv_attach_aio_context    = nbd_attach_aio_context,
     .bdrv_refresh_filename      = nbd_refresh_filename,
+    .bdrv_co_block_status       = nbd_client_co_block_status,
 };
 
 static void bdrv_nbd_init(void)

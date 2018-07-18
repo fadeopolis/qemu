@@ -44,9 +44,9 @@ extern __thread CPUState *thread_cpu;
 extern __thread uint32_t _tpi_thread_tid;
 
 #ifndef CONFIG_USER_ONLY
-#include <exec/cpu_ldst.h>
-#include <exec/cpu-defs.h>
-#include <exec/cpu-all.h>
+#include "exec/cpu_ldst.h"
+#include "exec/cpu-defs.h"
+#include "exec/cpu-all.h"
 
 /* return host address for a guest virtual address.
  * Inspired by code from include/exec/cpu_ldst_template.h
