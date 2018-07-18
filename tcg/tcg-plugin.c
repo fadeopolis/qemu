@@ -946,6 +946,9 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
         fprintf(tpi->output, "plugin: info: high pc = 0x%016" PRIx64 "\n", tpi->high_pc);
         fprintf(tpi->output, "plugin: info: cpus_stopped callback = %p\n", tpi->cpus_stopped);
         fprintf(tpi->output, "plugin: info: before_gen_tb callback = %p\n", tpi->before_gen_tb);
+        fprintf(tpi->output, "plugin: info: before_decode_first_instr callback = %p\n", tpi->before_decode_first_instr);
+        fprintf(tpi->output, "plugin: info: after_decode_last_instr callback = %p\n", tpi->after_decode_last_instr);
+        fprintf(tpi->output, "plugin: info: before_decode_instr callback = %p\n", tpi->before_decode_instr);
         fprintf(tpi->output, "plugin: info: after_gen_tb callback = %p\n", tpi->after_gen_tb);
         fprintf(tpi->output, "plugin: info: after_gen_opc callback = %p\n", tpi->after_gen_opc);
         fprintf(tpi->output, "plugin: info: pre_tb_helper_code callback = %p\n", tpi->pre_tb_helper_code);
@@ -1162,6 +1165,8 @@ static void tcg_plugin_tpi_after_decode_last_instr(TCGPluginInterface *tpi,
 }
 
 
+
+
 static void tcg_plugin_tpi_after_gen_opc(TCGPluginInterface *tpi,
                                          TCGOp *opcode, TCGArg *opargs, uint8_t nb_args)
 {
@@ -1372,6 +1377,43 @@ void tcg_plugin_after_decode_last_instr(CPUState *env, TranslationBlock *tb)
             tpi->_current_pc = tb->pc;
             tpi->_current_tb = tb;
             tcg_plugin_tpi_after_decode_last_instr(tpi, env, tb);
+        }
+    }
+
+    assert(_gen_tpi_helper_depth > 0);
+    _gen_tpi_helper_depth--;
+}
+
+
+/* Hook called each time before QEMU starts decoding a guest instruction.  */
+void tcg_plugin_before_decode_instr(uint64_t pc)
+{
+    GList *l;
+
+    _gen_tpi_helper_depth++;
+
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
+    {
+        TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
+        if (!tpi->_active)
+            continue;
+
+        if (tcg_plugin_initialize(tpi)) {
+            if (pc < tpi->low_pc || pc >= tpi->high_pc) {
+                continue;
+            }
+
+            if (tpi->_in_gen_tpi_helper)
+                continue;
+
+            tpi->_in_gen_tpi_helper = true;
+
+            if (tpi->before_decode_instr) {
+                tpi->_current_pc = pc;
+                TPI_CALLBACK_NOT_GENERIC(tpi, before_decode_instr, pc);
+            }
+
+            tpi->_in_gen_tpi_helper = false;
         }
     }
 
