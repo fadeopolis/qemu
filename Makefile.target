@@ -196,22 +196,22 @@ tcg-plugin-dineroIV.o: d4-7/config.h
 tcg-plugin-dineroIV.so: tcg-plugin-dineroIV.o $(D4_OBJS)
 	$(call LINK,$^)
 
-tcg-plugin-dyncount.o: CFLAGS += $(CAPSTONE_CFLAGS)
-tcg-plugin-dyncount.so: LIBS += $(CAPSTONE_LDFLAGS)
+tcg-plugin-dyncount.o: CFLAGS += $(CAP_CFLAGS)
+tcg-plugin-dyncount.so: LIBS += $(CAP_LDFLAGS)
 
-tcg-plugin-dyntrace.o: CFLAGS += $(CAPSTONE_CFLAGS)
-tcg-plugin-dyntrace.so: LIBS += $(CAPSTONE_LDFLAGS)
+tcg-plugin-dyntrace.o: CFLAGS += $(CAP_CFLAGS)
+tcg-plugin-dyntrace.so: LIBS += $(CAP_LDFLAGS)
 
-tcg-plugin-coverage.o: CFLAGS += $(CAPSTONE_CFLAGS)
-tcg-plugin-coverage.so: LIBS += $(CAPSTONE_LDFLAGS)
+tcg-plugin-coverage.o: CFLAGS += $(CAP_CFLAGS)
+tcg-plugin-coverage.so: LIBS += $(CAP_LDFLAGS)
 
 # cxx plugin
 ifdef CONFIG_TCG_PLUGIN_CPP
 
-tcg-plugin-cpp.so: LIBS += $(CAPSTONE_LDFLAGS) $(LDFLAGS) -ldwarf++ -lelf++
+tcg-plugin-cpp.so: LIBS += $(CAP_LDFLAGS) $(LDFLAGS) -ldwarf++ -lelf++
 
 CXX_PLUGIN_FLAGS := -Wall -Werror -Wextra -pedantic -std=c++14 \
-					$(CAPSTONE_CFLAGS) $(CFLAGS) -fno-PIE -fPIC
+					$(CAP_CFLAGS) $(CFLAGS) -fno-PIE -fPIC
 
 CPP_PLUGIN_OBJS := $(patsubst $(SRC_PATH)/tcg/plugins/cpp/%.cpp,cpp-%.o,$(wildcard $(SRC_PATH)/tcg/plugins/cpp/*.cpp))
 CPP_DEPS := $(patsubst %.o,%.d,$(CPP_PLUGIN_OBJS))
