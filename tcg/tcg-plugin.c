@@ -54,7 +54,7 @@
 __thread uint32_t _tpi_thread_tid;
 
 /* number of gen_tpi_helper callback currently live on the stack */
-static __thread unsigned _gen_tpi_helper_depth = 0;
+static __thread unsigned _gen_tpi_helper_depth;
 
 /* Singleton plugins global state. */
 static struct {
@@ -64,7 +64,8 @@ static struct {
     uint64_t low_pc;
     uint64_t high_pc;
     bool verbose;
-    bool multi_load; // whether loading a plugin multiple times is allowed. On by default.
+    /* whether loading a plugin multiple times is allowed. On by default. */
+    bool multi_load;
 
     /* Ensure resources used by *_helper_code are protected from
        concurrent access when mutex_protected is true.  */
@@ -138,19 +139,16 @@ static const char *param_type_to_string(enum TPI_PARAM_TYPE type)
 
 TCGPluginInterface *tpi_find_plugin(const char *name, uint32_t id)
 {
-    {
-        GList *l;
-        for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
-            TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-            if (name)
-            {
-                if (strstr(tpi->name, name) != NULL)
-                    return tpi;
+    GList *l;
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
+        TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
+        if (name) {
+            if (strstr(tpi->name, name) != NULL) {
+                return tpi;
             }
-            else
-            {
-                if (tpi->id == id)
-                    return tpi;
+        } else {
+            if (tpi->id == id) {
+                return tpi;
             }
         }
     }
@@ -202,8 +200,9 @@ static char *param_value_to_string(const TCGPluginInterface *tpi,
     }
 
     char *result = g_string_free(res, false);
-    if (has_result)
+    if (has_result) {
         return result;
+    }
 
     g_free(result);
     return NULL;
@@ -211,20 +210,21 @@ static char *param_value_to_string(const TCGPluginInterface *tpi,
 
 void tpi_set_active(TCGPluginInterface *tpi, bool active)
 {
-    if (tpi->_active == active)
+    if (tpi->_active == active) {
         return;
+    }
 
     tpi->_active = active;
 
     /* flush translation cache on every cpu */
-    CPUState* cpu;
-    CPU_FOREACH(cpu)
-    {
+    CPUState *cpu;
+    CPU_FOREACH(cpu) {
         tb_flush(cpu);
     }
 
-    if (tpi->active_changed)
+    if (tpi->active_changed) {
         tpi->active_changed(active);
+    }
 }
 
 static bool command_enable_plugin(TCGPluginInterface *tpi,
@@ -241,8 +241,8 @@ static bool command_disable_plugin(TCGPluginInterface *tpi,
     return true;
 }
 
-static int foreach_parameters_tree_get_parameters(void* key, void* value,
-                                                  void* data)
+static int foreach_parameters_tree_get_parameters(void *key, void *value,
+                                                  void *data)
 {
     const TPIParam *param = (const TPIParam *)value;
     void **data_array = (void **)data;
@@ -250,8 +250,9 @@ static int foreach_parameters_tree_get_parameters(void* key, void* value,
     const TCGPluginInterface *tpi = (const TCGPluginInterface *)(data_array[1]);
     bool first = (res->len == 1); /* "[" */
 
-    if (!first)
+    if (!first) {
         g_string_append(res, ",");
+    }
     g_string_append_printf(res, "\"%s\": ", param->name);
     g_string_append(res, "{");
     g_string_append_printf(res, "\"description\": \"%s\", ",
@@ -271,7 +272,7 @@ static bool command_get_parameters(const TCGPluginInterface *tpi,
 {
     GString *res = g_string_new(NULL);
 
-    void* data[] = {res, (void*)tpi};
+    void *data[] = {res, (void *)tpi};
 
     g_string_append(res, "{");
     g_tree_foreach(tpi->parameters, &foreach_parameters_tree_get_parameters,
@@ -364,7 +365,7 @@ static bool command_get_plugins(char **answer)
     bool first = true;
 
     {
-        GList* l;
+        GList *l;
         for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
             const TCGPluginInterface *tpi = (const TCGPluginInterface *)l->data;
             if (!first) {
@@ -387,8 +388,7 @@ static bool command_get_plugins(char **answer)
     return true;
 }
 
-enum TPI_PLUGIN_COMMAND
-{
+enum TPI_PLUGIN_COMMAND {
     TPI_PLUGIN_COMMAND_GET_PLUGINS,
     TPI_PLUGIN_COMMAND_GET_PARAMETERS,
     TPI_PLUGIN_COMMAND_SET_PARAMETER,
@@ -437,18 +437,15 @@ static bool handle_command(enum TPI_PLUGIN_COMMAND command_type, char **answer,
         bool name_is_id = true;
         {
             const char *it;
-            for (it = plugin_name; it && *it; ++it)
-            {
-                if (!isdigit(*it))
-                {
+            for (it = plugin_name; it && *it; ++it) {
+                if (!isdigit(*it)) {
                     name_is_id = false;
                     break;
                 }
             }
         }
 
-        if (name_is_id)
-        {
+        if (name_is_id) {
             plugin_id = atoi(plugin_name);
             plugin_name = NULL;
         }
@@ -549,9 +546,9 @@ void tcg_plugin_load(const char *name)
 
     assert(name != NULL);
 
-    static uint32_t unique_id = 0;
+    static uint32_t unique_id;
 
-    tpi = (TCGPluginInterface *)g_malloc0(sizeof(TCGPluginInterface));
+    tpi = g_malloc0(sizeof(TCGPluginInterface));
     tpi->name = (char *)g_strdup(name);
     tpi->id = unique_id;
     g_plugins_state.tpi_list = g_list_append(g_plugins_state.tpi_list, tpi);
@@ -564,8 +561,8 @@ void tcg_plugin_load(const char *name)
  * terminated varargs list.
  * Ignores case.
  */
-
-static bool stroneof_nocase(const char *wanted, ...) {
+static bool stroneof_nocase(const char *wanted, ...)
+{
     const char *expected;
     bool found = false;
 
@@ -586,7 +583,9 @@ static void tcg_plugin_state_init(void)
 {
     const char *tmp;
 
-    if (g_plugins_state.output != NULL) return;
+    if (g_plugins_state.output != NULL) {
+        return;
+    }
 
     /* No TB chain with plugins as we must have an up to date
      * env->current_tb for the plugin interface.
@@ -607,8 +606,7 @@ static void tcg_plugin_state_init(void)
         char path[PATH_MAX];
         if (no_pid) {
             snprintf(path, PATH_MAX, "%s", getenv("TPI_OUTPUT"));
-        }
-        else {
+        } else {
             snprintf(path, PATH_MAX, "%s.%d", getenv("TPI_OUTPUT"), getpid());
         }
         g_plugins_state.output = fopen(path, "w");
@@ -622,17 +620,20 @@ static void tcg_plugin_state_init(void)
                 int status;
                 unlink(getenv("TPI_OUTPUT"));
                 status = symlink(path, getenv("TPI_OUTPUT"));
-                if (status != 0)
-                    fprintf(stderr, "plugin: warning: can't create symlink TPI_OUTPUT "
-                            "at %s: %s\n",
+                if (status != 0) {
+                    fprintf(stderr, "plugin: warning: can't create symlink "
+                            "TPI_OUTPUT at %s: %s\n",
                             getenv("TPI_OUTPUT"), strerror(errno));
+                }
             }
         }
     }
-    if (!g_plugins_state.output)
+    if (!g_plugins_state.output) {
         g_plugins_state.output = fdopen(dup(fileno(stderr)), "a");
-    if (!g_plugins_state.output)
+    }
+    if (!g_plugins_state.output) {
         g_plugins_state.output = stderr;
+    }
     assert(g_plugins_state.output != NULL);
 
     /* This is a compromise between buffered output and truncated
@@ -686,7 +687,7 @@ static void tcg_plugin_state_init(void)
         pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
         pthread_mutex_init(&g_plugins_state.user_mutex, &attr);
 
-        g_plugins_state.mutex_protected = (getenv("TPI_MUTEX_PROTECTED") != NULL);
+        g_plugins_state.mutex_protected = getenv("TPI_MUTEX_PROTECTED") != NULL;
         pthread_mutex_init(&g_plugins_state.helper_mutex, NULL);
     }
 
@@ -734,7 +735,7 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
 
     tcg_plugin_state_init();
 
-    exec_dir= qemu_get_exec_dir();
+    exec_dir = qemu_get_exec_dir();
 
     /* Check if "name" refers to an installed/compiled plugin (short form).  */
     if (tpi->name[0] != '.' && strchr(tpi->name, '/') == NULL &&
@@ -753,8 +754,7 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
         g_free(exec_dir);
 
         struct stat buf;
-        if (stat(path, &buf) != 0)
-        {
+        if (stat(path, &buf) != 0) {
             /* look for compiled plugin */
             char *exe_path = NULL;
 #ifdef __linux__
@@ -765,7 +765,7 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
             prefix = dirname(exe_path);
             format = "%s/tcg-plugin-%s.so";
             size = strlen(format) + strlen(prefix) +
-                   strlen(tpi->name) - 2*strlen("%s") + 1;
+                   strlen(tpi->name) - 2 * strlen("%s") + 1;
             snprintf(path, size, format, prefix, tpi->name);
 
             free(exe_path);
@@ -794,7 +794,8 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
 
         plugin_fd = open(path, O_RDONLY);
         if (plugin_fd < 0) {
-            fprintf(stderr, "plugin: error: can't open plugin at %s: %s\n", path, strerror(errno));
+            fprintf(stderr, "plugin: error: can't open plugin at %s: %s\n",
+                    path, strerror(errno));
             goto error;
         }
 
@@ -802,13 +803,15 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
 
         plugin_instance_fd = mkstemp(plugin_instance_path);
         if (plugin_instance_fd < 0) {
-            fprintf(stderr, "plugin: error: can't create temporary file: %s\n", strerror(errno));
+            fprintf(stderr, "plugin: error: can't create temporary file: %s\n",
+                    strerror(errno));
             goto error;
         }
 
         status = fstat(plugin_fd, &plugin_info);
         if (status != 0) {
-            fprintf(stderr, "plugin: error: can't stat file at %s: %s\n", path, strerror(errno));
+            fprintf(stderr, "plugin: error: can't stat file at %s: %s\n", path,
+                    strerror(errno));
             goto error;
         }
 
@@ -818,7 +821,8 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
             size -= count;
             count = sendfile(plugin_instance_fd, plugin_fd, NULL, size);
             if (count < 0) {
-                fprintf(stderr, "plugin: error: can't copy plugin file at %s: %s\n", path, strerror(errno));
+                fprintf(stderr, "plugin: error: can't copy plugin file at %s: %s\n",
+                        path, strerror(errno));
                 goto error;
             }
         }
@@ -831,22 +835,22 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
      * Load the dynamic shared object and retreive its symbol
      * "tpi_init".
      */
-//#define NEED_GDB_BACKTRACE_PLUGIN
 #ifdef NEED_GDB_BACKTRACE_PLUGIN
-    handle = dlopen(path, RTLD_NOW|RTLD_GLOBAL);
+    handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
 #else
-    handle = dlopen(plugin_instance_path, RTLD_NOW|RTLD_GLOBAL);
+    handle = dlopen(plugin_instance_path, RTLD_NOW | RTLD_GLOBAL);
 #endif
     if (!handle) {
-        fprintf(stderr, "plugin: error: can't load plugin at %s  %s\n", plugin_instance_path,
-                dlerror());
+        fprintf(stderr, "plugin: error: can't load plugin at %s  %s\n",
+                plugin_instance_path, dlerror());
         goto error;
     }
     tpi->instance_handle = handle;
 
     tpi_init = dlsym(handle, "tpi_init");
     if (!tpi_init) {
-        fprintf(stderr, "plugin: error: can't resolve 'tpi_init' function in plugin at %s: %s\n", path, dlerror());
+        fprintf(stderr, "plugin: error: can't resolve 'tpi_init' function in plugin at %s: %s\n",
+                path, dlerror());
         goto error;
     }
 
@@ -931,7 +935,8 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
                 "(%s != %s)\n", tpi->mode, EMULATION_MODE);
     }
 
-    tpi->is_generic = strcmp(tpi->guest, "any") == 0 && strcmp(tpi->mode, "any") == 0;
+    tpi->is_generic = strcmp(tpi->guest, "any") == 0 &&
+                      strcmp(tpi->mode, "any") == 0;
 
     if (g_plugins_state.verbose) {
         tpi->verbose = true;
@@ -958,29 +963,30 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
 
     close(plugin_fd);
     close(plugin_instance_fd);
-    if (g_plugins_state.multi_load)
+    if (g_plugins_state.multi_load) {
         unlink(plugin_instance_path);
+    }
 
     return;
 
 error:
-    if (path)
-        g_free(path);
+    g_free(path);
+    g_free(plugin_instance_path);
 
-    if (plugin_instance_path)
-        g_free(plugin_instance_path);
-
-    if (plugin_fd >= 0)
+    if (plugin_fd >= 0) {
         close(plugin_fd);
+    }
 
     if (plugin_instance_fd >= 0) {
         close(plugin_instance_fd);
-        if (g_plugins_state.multi_load)
+        if (g_plugins_state.multi_load) {
             unlink(plugin_instance_path);
+        }
     }
 
-    if (handle != NULL)
+    if (handle != NULL) {
         dlclose(handle);
+    }
 
     memset(tpi, 0, sizeof(*tpi));
 
@@ -996,12 +1002,18 @@ error:
 static bool tcg_plugin_initialize(TCGPluginInterface *tpi)
 {
     assert(tpi != NULL);
-    if (tpi->version > 0) return 1;
-    if (tpi->version == -1) return 0;
+    if (tpi->version > 0) {
+        return 1;
+    }
+    if (tpi->version == -1) {
+        return 0;
+    }
 
     /* This is the first initialization, if failed, set version to -1. */
     tcg_plugin_tpi_init(tpi);
-    if (tpi->version == 0) tpi->version = -1;
+    if (tpi->version == 0) {
+        tpi->version = -1;
+    }
 
     return tpi->version > 0;
 }
@@ -1014,7 +1026,7 @@ static bool tcg_plugin_initialize(TCGPluginInterface *tpi)
         }                                                  \
         tpi->callback(tpi, ##__VA_ARGS__);                 \
         tpi->tb = NULL;                                    \
-    } while (0);
+    } while (0)
 
 static void tcg_plugin_tpi_before_gen_tb(TCGPluginInterface *tpi,
                                          TranslationBlock *tb)
@@ -1098,7 +1110,9 @@ static void tcg_plugin_tpi_after_gen_tb(TCGPluginInterface *tpi,
         uint64_t data2 = 0;
 
         if (tpi->pre_tb_helper_data) {
-            TPI_CALLBACK_NOT_GENERIC(tpi, pre_tb_helper_data, *(TPIHelperInfo *)tpi->_tb_info, tb->pc, &data1, &data2, tb);
+            TPI_CALLBACK_NOT_GENERIC(tpi, pre_tb_helper_data,
+                                     *(TPIHelperInfo *)tpi->_tb_info, tb->pc,
+                                     &data1, &data2, tb);
         }
 
 #if TCG_TARGET_REG_BITS == 64
@@ -1177,7 +1191,7 @@ static void tcg_plugin_tpi_after_gen_opc(TCGPluginInterface *tpi,
 #if TARGET_LONG_BITS <= TCG_TARGET_REG_BITS
         tpi->_current_pc = opcode->args[0];
 #else
-        tpi->_current_pc = (uint64_t)opcode->args[0] | (uint64_t)opcode->args[1] << 32;
+        tpi->_current_pc = deposit64(opcode->args[0], 32, 32, opcode->args[1]);
 #endif
     }
 
@@ -1185,8 +1199,9 @@ static void tcg_plugin_tpi_after_gen_opc(TCGPluginInterface *tpi,
         return;
     }
 
-    if (tpi->_in_gen_tpi_helper)
+    if (tpi->_in_gen_tpi_helper) {
         return;
+    }
 
     tpi->_in_gen_tpi_helper = true;
 
@@ -1229,10 +1244,11 @@ void helper_tcg_plugin_pre_tb(uint64_t tpi_ptr,
 
     TCGPluginInterface *tpi = (TCGPluginInterface *)(intptr_t)tpi_ptr;
     const TranslationBlock *tb = (TranslationBlock *)(intptr_t)tb_ptr;
-    if (tcg_plugin_initialize(tpi))
+    if (tcg_plugin_initialize(tpi)) {
         TPI_CALLBACK_NOT_GENERIC(tpi, pre_tb_helper_code,
                                  *(TPIHelperInfo *)&info,
                                  address, data1, data2, tb);
+    }
 end:
     if (g_plugins_state.mutex_protected) {
         pthread_mutex_unlock(&g_plugins_state.helper_mutex);
@@ -1263,14 +1279,14 @@ void tcg_plugin_cpus_stopped(void)
 {
     GList *l;
 
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
+        if (!tpi->_active) {
             continue;
-        if (tcg_plugin_initialize(tpi))
-            if (tpi->cpus_stopped)
-                TPI_CALLBACK_NOT_GENERIC(tpi, cpus_stopped);
+        }
+        if (tcg_plugin_initialize(tpi) && tpi->cpus_stopped) {
+            TPI_CALLBACK_NOT_GENERIC(tpi, cpus_stopped);
+        }
     }
 }
 
@@ -1278,11 +1294,11 @@ void tcg_plugin_cpus_stopped(void)
 void tcg_plugin_before_gen_tb(TranslationBlock *tb)
 {
     GList *l;
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
+        if (!tpi->_active) {
             continue;
+        }
         if (tcg_plugin_initialize(tpi)) {
             tpi->_current_pc = tb->pc;
             tpi->_current_tb = tb;
@@ -1291,11 +1307,11 @@ void tcg_plugin_before_gen_tb(TranslationBlock *tb)
 
     _gen_tpi_helper_depth++;
 
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
+        if (!tpi->_active) {
             continue;
+        }
         if (tcg_plugin_initialize(tpi)) {
             tcg_plugin_tpi_before_gen_tb(tpi, tb);
         }
@@ -1309,11 +1325,11 @@ void tcg_plugin_before_gen_tb(TranslationBlock *tb)
 void tcg_plugin_after_gen_tb(TranslationBlock *tb)
 {
     GList *l;
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
+        if (!tpi->_active) {
             continue;
+        }
         if (tcg_plugin_initialize(tpi)) {
             tcg_plugin_tpi_after_gen_tb(tpi, tb);
         }
@@ -1321,11 +1337,11 @@ void tcg_plugin_after_gen_tb(TranslationBlock *tb)
 
     _gen_tpi_helper_depth++;
 
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
+        if (!tpi->_active) {
             continue;
+        }
         if (tcg_plugin_initialize(tpi)) {
             tpi->_current_pc = 0;
             tpi->_current_tb = NULL;
@@ -1344,11 +1360,11 @@ void tcg_plugin_before_decode_first_instr(TranslationBlock *tb)
 
     _gen_tpi_helper_depth++;
 
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
+        if (!tpi->_active) {
             continue;
+        }
         if (tcg_plugin_initialize(tpi)) {
             tpi->_current_pc = tb->pc;
             tpi->_current_tb = tb;
@@ -1368,11 +1384,11 @@ void tcg_plugin_after_decode_last_instr(TranslationBlock *tb)
 
     _gen_tpi_helper_depth++;
 
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
+        if (!tpi->_active) {
             continue;
+        }
         if (tcg_plugin_initialize(tpi)) {
             tpi->_current_pc = tb->pc;
             tpi->_current_tb = tb;
@@ -1392,19 +1408,20 @@ void tcg_plugin_before_decode_instr(uint64_t pc)
 
     _gen_tpi_helper_depth++;
 
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
+        if (!tpi->_active) {
             continue;
+        }
 
         if (tcg_plugin_initialize(tpi)) {
             if (pc < tpi->low_pc || pc >= tpi->high_pc) {
                 continue;
             }
 
-            if (tpi->_in_gen_tpi_helper)
+            if (tpi->_in_gen_tpi_helper) {
                 continue;
+            }
 
             tpi->_in_gen_tpi_helper = true;
 
@@ -1429,13 +1446,14 @@ void tcg_plugin_after_gen_opc(TCGOp *opcode, uint8_t nb_args)
 
     _gen_tpi_helper_depth++;
 
-    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next)
-    {
+    for (l = g_plugins_state.tpi_list; l != NULL; l = l->next) {
         TCGPluginInterface *tpi = (TCGPluginInterface *)l->data;
-        if (!tpi->_active)
+        if (!tpi->_active) {
             continue;
-        if (tcg_plugin_initialize(tpi))
+        }
+        if (tcg_plugin_initialize(tpi)) {
             tcg_plugin_tpi_after_gen_opc(tpi, opcode, nb_args);
+        }
     }
 
     assert(_gen_tpi_helper_depth > 0);
@@ -1466,17 +1484,17 @@ void tpi_exec_unlock(const TCGPluginInterface *tpi)
     }
 }
 
-uint64_t tpi_tb_address(const TranslationBlock* tb)
+uint64_t tpi_tb_address(const TranslationBlock *tb)
 {
     return tb->pc;
 }
 
-extern uint32_t tpi_tb_size(const TranslationBlock* tb)
+extern uint32_t tpi_tb_size(const TranslationBlock *tb)
 {
     return tb->size;
 }
 
-extern uint32_t tpi_tb_icount(const TranslationBlock* tb)
+extern uint32_t tpi_tb_icount(const TranslationBlock *tb)
 {
     return tb->icount;
 }
@@ -1614,10 +1632,11 @@ static bool set_parameter_value(const TCGPluginInterface *tpi, const char *name,
 
     return true;
 error:
-    if (error == NULL)
+    if (error == NULL) {
         g_free(tmp_error);
-    else
+    } else {
         *error = tmp_error;
+    }
 
     return false;
 }
@@ -1656,8 +1675,9 @@ static bool get_parameter_value(const TCGPluginInterface *tpi,
                                  const char *name, void *value_ptr)
 {
     TPIParam *p = get_parameter_pointer(tpi, name);
-    if (!p)
+    if (!p) {
         return false;
+    }
 
     switch (p->type) {
     case TPI_PARAM_TYPE_BOOL: {

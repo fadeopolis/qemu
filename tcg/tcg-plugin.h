@@ -71,12 +71,11 @@
  * TCG plugin interface.
  */
 
-extern bool tcg_plugin_treat_command(const char* command, char** answer);
+extern bool tcg_plugin_treat_command(const char *command, char **answer);
 
 /* This structure shall be 64 bits, see call_tb_helper_code() for
  * details.  */
-typedef struct
-{
+typedef struct {
     uint16_t cpu_index;
     uint16_t size;
     union {
@@ -86,8 +85,7 @@ typedef struct
 } __attribute__((__packed__, __may_alias__)) TPIHelperInfo;
 
 #define TPI_MAX_OP_ARGS 6
-typedef struct TPIOpCode
-{
+typedef struct TPIOpCode {
     uint64_t pc;
     uint8_t nb_args;
     uint8_t operator;
@@ -100,8 +98,7 @@ typedef struct TPIOpCode
     void *data;
 } TPIOpCode;
 
-enum TPI_PARAM_TYPE
-{
+enum TPI_PARAM_TYPE {
     TPI_PARAM_TYPE_BOOL,
     TPI_PARAM_TYPE_INT,
     TPI_PARAM_TYPE_UINT,
@@ -109,8 +106,7 @@ enum TPI_PARAM_TYPE
     TPI_PARAM_TYPE_DOUBLE,
 };
 
-typedef struct
-{
+typedef struct {
     char *name;
     enum TPI_PARAM_TYPE type;
     void *value_ptr;
@@ -127,24 +123,26 @@ typedef void (* tpi_before_gen_tb_t)(const TCGPluginInterface *tpi);
 typedef void (* tpi_after_gen_tb_t)(const TCGPluginInterface *tpi);
 
 typedef void (* tpi_before_decode_first_instr_t)(const TCGPluginInterface *tpi,
-                                                 const TranslationBlock* tb);
+                                                 const TranslationBlock *tb);
 
 typedef void (* tpi_after_decode_last_instr_t)(const TCGPluginInterface *tpi,
-                                               const TranslationBlock* tb);
+                                               const TranslationBlock *tb);
 
-typedef void (* tpi_before_decode_instr_t)(const TCGPluginInterface *tpi, uint64_t pc);
+typedef void (* tpi_before_decode_instr_t)(const TCGPluginInterface *tpi,
+                                           uint64_t pc);
 
-typedef void (* tpi_after_gen_opc_t)(const TCGPluginInterface *tpi, const TPIOpCode *opcode);
+typedef void (* tpi_after_gen_opc_t)(const TCGPluginInterface *tpi,
+                                     const TPIOpCode *opcode);
 
 typedef void (* tpi_pre_tb_helper_code_t)(const TCGPluginInterface *tpi,
                                           TPIHelperInfo info, uint64_t address,
                                           uint64_t data1, uint64_t data2,
-                                          const TranslationBlock* tb);
+                                          const TranslationBlock *tb);
 
 typedef void (* tpi_pre_tb_helper_data_t)(const TCGPluginInterface *tpi,
                                           TPIHelperInfo info, uint64_t address,
                                           uint64_t *data1, uint64_t *data2,
-                                          const TranslationBlock* tb);
+                                          const TranslationBlock *tb);
 
 /* callback to get access to a parameter.
  * Allows a plugin to compute dynamically a value when parameter is asked.
@@ -195,10 +193,9 @@ typedef bool (*tpi_check_param_double_t)(const TCGPluginInterface *tpi,
 /* callback called when plugin was set active/inactive */
 typedef void (*tpi_active_changed_t)(bool new_state);
 
-#define TPI_VERSION 9 
+#define TPI_VERSION 9
 
-struct TCGPluginInterface
-{
+struct TCGPluginInterface {
     /* Compatibility information.  */
     int32_t version;
     int32_t id;
@@ -262,7 +259,7 @@ struct TCGPluginInterface
     tpi_active_changed_t active_changed;
 
     /* Parameters */
-    GTree* parameters; /* string -> TPIParam */
+    GTree *parameters; /* string -> TPIParam */
 };
 
 #define TPI_INIT_VERSION(tpi) do {                                     \
@@ -272,7 +269,7 @@ struct TCGPluginInterface
         (tpi)->sizeof_CPUState = sizeof(CPUState);                      \
         (tpi)->sizeof_TranslationBlock = sizeof(TranslationBlock);      \
         (tpi)->sizeof_TCGContext = sizeof(TCGContext);                  \
-    } while (0);
+    } while (0)
 
 #define TPI_INIT_VERSION_GENERIC(tpi) do {                             \
         (tpi)->version = TPI_VERSION;                                   \
@@ -281,7 +278,7 @@ struct TCGPluginInterface
         (tpi)->sizeof_CPUState = 0;                                     \
         (tpi)->sizeof_TranslationBlock = 0;                             \
         (tpi)->sizeof_TCGContext = sizeof(TCGContext);                  \
-    } while (0);
+    } while (0)
 
 /* Macros for declaration of plugin functions callable from target buffer.
    The declared function can then be called with tcg_gen_callN().
@@ -305,7 +302,7 @@ struct TCGPluginInterface
             { .func = NAME, .name = #NAME, .flags = FLAGS,               \
               .sizemask = dh_sizemask(ret, 0) };                         \
         tcg_define_helper(&_info);                                       \
-    } while(0)
+    } while (0)
 
 #define TPI_DECL_FUNC_1(tpi, NAME, ret, t1)             \
     TPI_DECL_FUNC_FLAGS_1(tpi, NAME, 0, ret, t1)
@@ -314,7 +311,7 @@ struct TCGPluginInterface
             { .func = NAME, .name = #NAME, .flags = FLAGS,               \
               .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1) };    \
         tcg_define_helper(&_info);                                       \
-    } while(0)
+    } while (0)
 
 #define TPI_DECL_FUNC_2(tpi, NAME, ret, t1, t2)         \
     TPI_DECL_FUNC_FLAGS_2(tpi, NAME, 0, ret, t1, t2)
@@ -324,7 +321,7 @@ struct TCGPluginInterface
               .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)       \
               | dh_sizemask(t2, 2) };                                    \
         tcg_define_helper(&_info);                                       \
-    } while(0)
+    } while (0)
 
 #define TPI_DECL_FUNC_3(tpi, NAME, ret, t1, t2, t3) \
     TPI_DECL_FUNC_FLAGS_3(tpi, NAME, 0, ret, t1, t2, t3)
@@ -334,7 +331,7 @@ struct TCGPluginInterface
               .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)       \
               | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) };               \
         tcg_define_helper(&_info);                                       \
-    } while(0)
+    } while (0)
 
 #define TPI_DECL_FUNC_4(tpi, NAME, ret, t1, t2, t3, t4)                 \
     TPI_DECL_FUNC_FLAGS_4(tpi, NAME, 0, ret, t1, t2, t3, t4)
@@ -344,7 +341,7 @@ struct TCGPluginInterface
               .sizemask = dh_sizemask(ret, 0) | dh_sizemask(t1, 1)              \
               | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) | dh_sizemask(t4, 4) }; \
         tcg_define_helper(&_info);                                              \
-    } while(0)
+    } while (0)
 
 #define TPI_DECL_FUNC_5(tpi, NAME, ret, t1, t2, t3, t4, t5)             \
     TPI_DECL_FUNC_FLAGS_5(tpi, NAME, 0, ret, t1, t2, t3, t4, t5)
@@ -355,10 +352,10 @@ struct TCGPluginInterface
               | dh_sizemask(t2, 2) | dh_sizemask(t3, 3) | dh_sizemask(t4, 4)  \
               | dh_sizemask(t5, 5) };                                         \
         tcg_define_helper(&_info);                                            \
-    } while(0)
+    } while (0)
 
 
-typedef void (* tpi_init_t)(TCGPluginInterface *tpi);
+typedef void (*tpi_init_t)(TCGPluginInterface *tpi);
 void tpi_init(TCGPluginInterface *tpi);
 
 /*
@@ -377,9 +374,9 @@ static inline FILE *tpi_output(const TCGPluginInterface *tpi);
  * Translation block accesors
  * Not static so plugins do not depend on definition of TranslationBlock.
  */
-extern uint64_t tpi_tb_address(const TranslationBlock* tb);
-extern uint32_t tpi_tb_size(const TranslationBlock* tb);
-extern uint32_t tpi_tb_icount(const TranslationBlock* tb);
+extern uint64_t tpi_tb_address(const TranslationBlock *tb);
+extern uint32_t tpi_tb_size(const TranslationBlock *tb);
+extern uint32_t tpi_tb_icount(const TranslationBlock *tb);
 
 /*
  * Thread related identifiers.
@@ -498,9 +495,12 @@ extern bool tpi_set_param_from_string(const TCGPluginInterface *tpi,
 /*
  * Guest to host address and loads.
  */
-static inline uint64_t tpi_guest_ptr(const TCGPluginInterface *tpi, uint64_t guest_address);
-static inline uint64_t tpi_guest_load64(const TCGPluginInterface *tpi, uint64_t guest_address);
-static inline uint32_t tpi_guest_load32(const TCGPluginInterface *tpi, uint64_t guest_address);
+static inline uint64_t tpi_guest_ptr(const TCGPluginInterface *tpi,
+                                     uint64_t guest_address);
+static inline uint64_t tpi_guest_load64(const TCGPluginInterface *tpi,
+                                        uint64_t guest_address);
+static inline uint32_t tpi_guest_load32(const TCGPluginInterface *tpi,
+                                        uint64_t guest_address);
 
 #include "tcg-plugin.inc.c"
 
