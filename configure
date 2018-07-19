@@ -5984,6 +5984,10 @@ if test "$tcg_plugin" = "yes" ; then
 fi
 
 if test "$tcg_plugin_cpp" = "yes" ; then
+  if test "$capstone" = no ; then
+    error_exit "C++ TCG plugins require capstone, but capstone support was disabled."
+  fi
+  ## TODO: probe for/build libelfin required by cpp plugins
   echo "CONFIG_TCG_PLUGIN_CPP=y" >> $config_host_mak
 fi
 

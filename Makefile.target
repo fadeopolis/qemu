@@ -210,8 +210,8 @@ ifdef CONFIG_TCG_PLUGIN_CPP
 
 tcg-plugin-cpp.so: LIBS += $(CAP_LDFLAGS) $(LDFLAGS) -ldwarf++ -lelf++
 
-CXX_PLUGIN_FLAGS := -Wall -Werror -Wextra -pedantic -std=c++14 \
-					$(CAP_CFLAGS) $(CFLAGS) -fno-PIE -fPIC
+CXX_PLUGIN_FLAGS := -Wall -std=c++14 \
+					$(QEMU_CXXFLAGS) $(CAP_CFLAGS) $(CFLAGS) -fno-PIE -fPIC
 
 CPP_PLUGIN_OBJS := $(patsubst $(SRC_PATH)/tcg/plugins/cpp/%.cpp,cpp-%.o,$(wildcard $(SRC_PATH)/tcg/plugins/cpp/*.cpp))
 CPP_DEPS := $(patsubst %.o,%.d,$(CPP_PLUGIN_OBJS))

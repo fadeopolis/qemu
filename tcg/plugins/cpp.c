@@ -147,14 +147,14 @@ static void after_gen_opc(const TCGPluginInterface* tpi, const TPIOpCode* op)
     TCGArg addr = op->opargs[1];
     TCGv_i32 t_size = tcg_const_i32(memory_size);
 
-    TCGArg args[] = {GET_TCGV_PTR(t_block), GET_TCGV_I64(t_pc), addr,
-                     GET_TCGV_I32(t_size)};
+    TCGTemp *args[] = {tcgv_ptr_temp(t_block), tcgv_i64_temp(t_pc),
+                       arg_temp(addr), tcgv_i32_temp(t_size)};
 
     if (is_load) {
-        tcg_gen_callN(tpi->tcg_ctx, on_load, TCG_CALL_DUMMY_ARG,
+        tcg_gen_callN(on_load, TCG_CALL_DUMMY_ARG,
                       sizeof(args) / sizeof(args[0]), args);
     } else {
-        tcg_gen_callN(tpi->tcg_ctx, on_store, TCG_CALL_DUMMY_ARG,
+        tcg_gen_callN(on_store, TCG_CALL_DUMMY_ARG,
                       sizeof(args) / sizeof(args[0]), args);
     }
 
@@ -169,8 +169,8 @@ static void before_gen_tb(const TCGPluginInterface* tpi)
 
     TCGv_ptr t_block = tcg_const_ptr(current_block_ptr);
 
-    TCGArg args[] = {GET_TCGV_PTR(t_block)};
-    tcg_gen_callN(tpi->tcg_ctx, on_block_exec, TCG_CALL_DUMMY_ARG, 1, args);
+    TCGTemp *args[] = {tcgv_ptr_temp(t_block)};
+    tcg_gen_callN(on_block_exec, TCG_CALL_DUMMY_ARG, 1, args);
 
     tcg_temp_free_ptr(t_block);
 }
