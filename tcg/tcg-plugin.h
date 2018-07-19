@@ -367,16 +367,6 @@ void tpi_init(TCGPluginInterface *tpi);
  * or translation time helpers.
  */
 
-/*
- * Thread local storage specification.
- * Use for instance as in:
- *   static TPI_THREAD int thread_local;
- */
-#ifdef __GNUC__
-#define TPI_THREAD __thread
-#else
-#error "Thread local storage not supported"
-#endif
 
 /*
  * Global plugin interface accessors.

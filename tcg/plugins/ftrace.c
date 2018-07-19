@@ -267,7 +267,7 @@ static void call_stack_dump(const call_stack_t *stack, int indent, FILE *out)
 typedef struct  {
     call_stack_t stack; /* The current thread call stack. */
 } locals_t;
-static TPI_THREAD locals_t locals;
+static __thread locals_t locals;
 
 /*
  * We consider that an execution of the instruction at the
