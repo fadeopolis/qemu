@@ -1168,16 +1168,16 @@ static void tcg_plugin_tpi_after_decode_last_instr(TCGPluginInterface *tpi,
 
 
 static void tcg_plugin_tpi_after_gen_opc(TCGPluginInterface *tpi,
-                                         TCGOp *opcode, TCGArg *opargs, uint8_t nb_args)
+                                         TCGOp *opcode, uint8_t nb_args)
 {
     TPIOpCode tpi_opcode;
 
     /* Catch insn_start opcodes to get the current pc. */
     if (opcode->opc == INDEX_op_insn_start) {
 #if TARGET_LONG_BITS <= TCG_TARGET_REG_BITS
-        tpi->_current_pc = opargs[0];
+        tpi->_current_pc = opcode->args[0];
 #else
-        tpi->_current_pc = (uint64_t)opargs[0] | (uint64_t)opargs[1] << 32;
+        tpi->_current_pc = (uint64_t)opcode->args[0] | (uint64_t)opcode->args[1] << 32;
 #endif
     }
 
@@ -1198,7 +1198,7 @@ static void tcg_plugin_tpi_after_gen_opc(TCGPluginInterface *tpi,
 
     tpi_opcode.operator = opcode->opc;
     tpi_opcode.opcode = opcode;
-    tpi_opcode.opargs = opargs;
+    tpi_opcode.opargs = opcode->args;
 
     if (tpi->after_gen_opc) {
         TPI_CALLBACK_NOT_GENERIC(tpi, after_gen_opc, &tpi_opcode);
@@ -1423,7 +1423,7 @@ void tcg_plugin_before_decode_instr(uint64_t pc)
 
 
 /* Hook called each time a TCG opcode is generated.  */
-void tcg_plugin_after_gen_opc(TCGOp *opcode, TCGArg *opargs, uint8_t nb_args)
+void tcg_plugin_after_gen_opc(TCGOp *opcode, uint8_t nb_args)
 {
     GList *l;
 
@@ -1435,7 +1435,7 @@ void tcg_plugin_after_gen_opc(TCGOp *opcode, TCGArg *opargs, uint8_t nb_args)
         if (!tpi->_active)
             continue;
         if (tcg_plugin_initialize(tpi))
-            tcg_plugin_tpi_after_gen_opc(tpi, opcode, opargs, nb_args);
+            tcg_plugin_tpi_after_gen_opc(tpi, opcode, nb_args);
     }
 
     assert(_gen_tpi_helper_depth > 0);

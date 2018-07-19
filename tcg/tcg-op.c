@@ -48,7 +48,7 @@ void tcg_gen_op1(TCGOpcode opc, TCGArg a1)
     TCGOp *op = tcg_emit_op(opc);
     op->args[0] = a1;
 
-    tcg_plugin_after_gen_opc(op, op->args, 1);
+    tcg_plugin_after_gen_opc(op, 1);
 }
 
 void tcg_gen_op2(TCGOpcode opc, TCGArg a1, TCGArg a2)
@@ -57,7 +57,7 @@ void tcg_gen_op2(TCGOpcode opc, TCGArg a1, TCGArg a2)
     op->args[0] = a1;
     op->args[1] = a2;
 
-    tcg_plugin_after_gen_opc(op, op->args, 2);
+    tcg_plugin_after_gen_opc(op, 2);
 }
 
 void tcg_gen_op3(TCGOpcode opc, TCGArg a1, TCGArg a2, TCGArg a3)
@@ -67,7 +67,7 @@ void tcg_gen_op3(TCGOpcode opc, TCGArg a1, TCGArg a2, TCGArg a3)
     op->args[1] = a2;
     op->args[2] = a3;
 
-    tcg_plugin_after_gen_opc(op, op->args, 3);
+    tcg_plugin_after_gen_opc(op, 3);
 }
 
 void tcg_gen_op4(TCGOpcode opc, TCGArg a1, TCGArg a2, TCGArg a3, TCGArg a4)
@@ -78,7 +78,7 @@ void tcg_gen_op4(TCGOpcode opc, TCGArg a1, TCGArg a2, TCGArg a3, TCGArg a4)
     op->args[2] = a3;
     op->args[3] = a4;
 
-    tcg_plugin_after_gen_opc(op, op->args, 4);
+    tcg_plugin_after_gen_opc(op, 4);
 }
 
 void tcg_gen_op5(TCGOpcode opc, TCGArg a1, TCGArg a2, TCGArg a3,
@@ -91,7 +91,7 @@ void tcg_gen_op5(TCGOpcode opc, TCGArg a1, TCGArg a2, TCGArg a3,
     op->args[3] = a4;
     op->args[4] = a5;
 
-    tcg_plugin_after_gen_opc(op, op->args, 5);
+    tcg_plugin_after_gen_opc(op, 5);
 }
 
 void tcg_gen_op6(TCGOpcode opc, TCGArg a1, TCGArg a2, TCGArg a3,
@@ -105,7 +105,7 @@ void tcg_gen_op6(TCGOpcode opc, TCGArg a1, TCGArg a2, TCGArg a3,
     op->args[4] = a5;
     op->args[5] = a6;
 
-    tcg_plugin_after_gen_opc(op, op->args, 6);
+    tcg_plugin_after_gen_opc(op, 6);
 }
 
 void tcg_gen_mb(TCGBar mb_type)

@@ -64,7 +64,7 @@
   void tcg_plugin_before_decode_first_instr(TranslationBlock *tb);
   void tcg_plugin_after_decode_last_instr(TranslationBlock *tb);
   void tcg_plugin_before_decode_instr(uint64_t pc);
-  void tcg_plugin_after_gen_opc(TCGOp *opcode, TCGArg *opargs, uint8_t nb_args);
+  void tcg_plugin_after_gen_opc(TCGOp *opcode, uint8_t nb_args);
   const char *tcg_plugin_get_filename(void);
 
 /***********************************************************************
@@ -524,7 +524,7 @@ static inline uint32_t tpi_guest_load32(const TCGPluginInterface *tpi, uint64_t 
 #   define tcg_plugin_before_decode_first_instr(tb)
 #   define tcg_plugin_after_decode_last_instr(tb)
 #   define tcg_plugin_before_decode_instr(pc)
-#   define tcg_plugin_after_gen_opc(tcg_opcode, tcg_opargs_, nb_args)
+#   define tcg_plugin_after_gen_opc(tcg_opcode, nb_args)
 #   define tcg_plugin_get_filename() "<unknown>"
 #endif /* !CONFIG_TCG_PLUGIN */
 

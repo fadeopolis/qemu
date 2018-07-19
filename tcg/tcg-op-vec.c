@@ -44,7 +44,7 @@ void vec_gen_2(TCGOpcode opc, TCGType type, unsigned vece, TCGArg r, TCGArg a)
     op->args[0] = r;
     op->args[1] = a;
 
-    tcg_plugin_after_gen_opc(op, op->args, 2);
+    tcg_plugin_after_gen_opc(op, 2);
 }
 
 void vec_gen_3(TCGOpcode opc, TCGType type, unsigned vece,
@@ -57,7 +57,7 @@ void vec_gen_3(TCGOpcode opc, TCGType type, unsigned vece,
     op->args[1] = a;
     op->args[2] = b;
 
-    tcg_plugin_after_gen_opc(op, op->args, 3);
+    tcg_plugin_after_gen_opc(op, 3);
 }
 
 void vec_gen_4(TCGOpcode opc, TCGType type, unsigned vece,
@@ -71,7 +71,7 @@ void vec_gen_4(TCGOpcode opc, TCGType type, unsigned vece,
     op->args[2] = b;
     op->args[3] = c;
 
-    tcg_plugin_after_gen_opc(op, op->args, 4);
+    tcg_plugin_after_gen_opc(op, 4);
 }
 
 static void vec_gen_op2(TCGOpcode opc, unsigned vece, TCGv_vec r, TCGv_vec a)

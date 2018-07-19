@@ -1561,7 +1561,7 @@ void tcg_gen_callN(void *func, TCGTemp *ret, int nargs, TCGTemp **args)
     tcg_debug_assert(pi <= ARRAY_SIZE(op->args));
 
     {
-        tcg_plugin_after_gen_opc(op, op->args, pi - 1);
+        tcg_plugin_after_gen_opc(op, pi - 1);
     }
 #if defined(__sparc__) && !defined(__arch64__) \
     && !defined(CONFIG_TCG_INTERPRETER)
