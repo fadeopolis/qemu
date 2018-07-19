@@ -42,12 +42,12 @@ static inline void gen_tb_start(TranslationBlock *tb)
     }
 
     tcg_temp_free_i32(count);
-    tcg_plugin_before_decode_first_instr(tcg_ctx->cpu, tb);
+    tcg_plugin_before_decode_first_instr(tb);
 }
 
 static inline void gen_tb_end(TranslationBlock *tb, int num_insns)
 {
-    tcg_plugin_after_decode_last_instr(tcg_ctx->cpu, tb);
+    tcg_plugin_after_decode_last_instr(tb);
 
     if (tb_cflags(tb) & CF_USE_ICOUNT) {
         /* Update the num_insn immediate parameter now that we know

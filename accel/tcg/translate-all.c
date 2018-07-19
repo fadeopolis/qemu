@@ -1328,11 +1328,11 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     tcg_func_start(tcg_ctx);
 
     tcg_ctx->cpu = ENV_GET_CPU(env);
-    tcg_plugin_before_gen_tb(tcg_ctx->cpu, tb);
+    tcg_plugin_before_gen_tb(tb);
 
     gen_intermediate_code(cpu, tb);
 
-    tcg_plugin_after_gen_tb(tcg_ctx->cpu, tb);
+    tcg_plugin_after_gen_tb(tb);
     tcg_ctx->cpu = NULL;
 
     trace_translate_block(tb, tb->pc, tb->tc.ptr);
