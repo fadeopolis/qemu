@@ -13,6 +13,7 @@
 #include "cpu.h"
 #include "tcg/tcg.h"
 #include "tcg/tcg-op.h"
+#include "tcg/tcg-plugin.h"
 #include "exec/exec-all.h"
 #include "exec/gen-icount.h"
 #include "exec/log.h"
@@ -34,8 +35,6 @@ void translator_loop_temp_check(DisasContextBase *db)
 void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
                      CPUState *cpu, TranslationBlock *tb)
 {
-    int max_insns;
-
     /* Initialize DisasContext */
     db->tb = tb;
     db->pc_first = tb->pc;
@@ -45,18 +44,18 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
     db->singlestep_enabled = cpu->singlestep_enabled;
 
     /* Instruction counting */
-    max_insns = tb_cflags(db->tb) & CF_COUNT_MASK;
-    if (max_insns == 0) {
-        max_insns = CF_COUNT_MASK;
+    db->max_insns = tb_cflags(db->tb) & CF_COUNT_MASK;
+    if (db->max_insns == 0) {
+        db->max_insns = CF_COUNT_MASK;
     }
-    if (max_insns > TCG_MAX_INSNS) {
-        max_insns = TCG_MAX_INSNS;
+    if (db->max_insns > TCG_MAX_INSNS) {
+        db->max_insns = TCG_MAX_INSNS;
     }
     if (db->singlestep_enabled || singlestep) {
-        max_insns = 1;
+        db->max_insns = 1;
     }
 
-    max_insns = ops->init_disas_context(db, cpu, max_insns);
+    ops->init_disas_context(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
     /* Reset the temp count so that we can identify leaks */
@@ -66,6 +65,8 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
     gen_tb_start(db->tb);
     ops->tb_start(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
+
+    tcg_plugin_before_decode_first_instr(tb);
 
     while (true) {
         db->num_insns++;
@@ -96,7 +97,8 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
            update db->pc_next and db->is_jmp to indicate what should be
            done next -- either exiting this loop or locate the start of
            the next instruction.  */
-        if (db->num_insns == max_insns && (tb_cflags(db->tb) & CF_LAST_IO)) {
+        if (db->num_insns == db->max_insns
+            && (tb_cflags(db->tb) & CF_LAST_IO)) {
             /* Accept I/O on the last instruction.  */
             gen_io_start();
             ops->translate_insn(db, cpu);
@@ -112,11 +114,13 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
 
         /* Stop translation if the output buffer is full,
            or we have executed all of the allowed instructions.  */
-        if (tcg_op_buf_full() || db->num_insns >= max_insns) {
+        if (tcg_op_buf_full() || db->num_insns >= db->max_insns) {
             db->is_jmp = DISAS_TOO_MANY;
             break;
         }
     }
+
+    tcg_plugin_after_decode_last_instr(tb);
 
     /* Emit code to exit the TB, as indicated by db->is_jmp.  */
     ops->tb_stop(db, cpu);

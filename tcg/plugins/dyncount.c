@@ -30,10 +30,12 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <unistd.h>
-#include <glib.h>
 
 #include "tcg-plugin.h"
 #include "disas/disas.h"
+
+/* glib must be included after osdep.h (which we include transitively via tcg-plugin.h) */
+#include <glib.h>
 
 #ifdef CONFIG_CAPSTONE
 #include <capstone.h>

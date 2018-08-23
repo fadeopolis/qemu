@@ -42,8 +42,3 @@ DEF_HELPER_FLAGS_2(ftrc_FT, TCG_CALL_NO_WG, i32, env, f32)
 DEF_HELPER_FLAGS_2(ftrc_DT, TCG_CALL_NO_WG, i32, env, f64)
 DEF_HELPER_3(fipr, void, env, i32, i32)
 DEF_HELPER_2(ftrv, void, env, i32)
-
-#if defined(CONFIG_USER_ONLY)
-DEF_HELPER_0(enter_gUSA_section, void)
-DEF_HELPER_0(exit_gUSA_section, void)
-#endif

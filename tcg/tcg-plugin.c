@@ -34,7 +34,6 @@
 #include <stdio.h>   /* *printf(3), memset(3), */
 #include <pthread.h> /* pthread_*, */
 #include <stdint.h>  /* int*_t types, */
-#include <glib.h>    /* glib2 objects/functions,*/
 #include <sys/sendfile.h> /* sendfile(2), */
 #include <execinfo.h>     /* backtrace(3), */
 #include <libgen.h>  /* dirname(3), */
@@ -49,6 +48,9 @@
 #include "qom/cpu.h"         /* CPUState */
 #include "sysemu/sysemu.h"   /* max_cpus */
 #include "qemu/log.h"        /* qemu_set_log() */
+
+/* glib must be included after osdep.h (which we include transitively via tcg.h) */
+#include <glib.h>    /* glib2 objects/functions,*/
 
 /* Definition of private externals used in tcg-plugin.inc.c. */
 __thread uint32_t _tpi_thread_tid;

@@ -2,7 +2,6 @@
 #define GEN_ICOUNT_H
 
 #include "qemu/timer.h"
-#include "tcg/tcg-plugin.h"
 
 /* Helpers for instruction counting code generation.  */
 
@@ -42,13 +41,10 @@ static inline void gen_tb_start(TranslationBlock *tb)
     }
 
     tcg_temp_free_i32(count);
-    tcg_plugin_before_decode_first_instr(tb);
 }
 
 static inline void gen_tb_end(TranslationBlock *tb, int num_insns)
 {
-    tcg_plugin_after_decode_last_instr(tb);
-
     if (tb_cflags(tb) & CF_USE_ICOUNT) {
         /* Update the num_insn immediate parameter now that we know
          * the actual insn count.  */
@@ -56,7 +52,7 @@ static inline void gen_tb_end(TranslationBlock *tb, int num_insns)
     }
 
     gen_set_label(tcg_ctx->exitreq_label);
-    tcg_gen_exit_tb((uintptr_t)tb + TB_EXIT_REQUESTED);
+    tcg_gen_exit_tb(tb, TB_EXIT_REQUESTED);
 }
 
 static inline void gen_io_start(void)
