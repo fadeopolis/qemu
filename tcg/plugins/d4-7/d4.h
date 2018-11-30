@@ -213,7 +213,7 @@ typedef struct d4_cache_struct {
 	int lg2size;		/* set by the user */
 	int assoc;		/* set by the user */
 
-	int numsets;		/* this one is derived, not set by the user */
+	unsigned numsets;	/* this one is derived, not set by the user */
 
 	/*
 	 * Interconnection of caches

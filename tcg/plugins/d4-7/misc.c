@@ -198,7 +198,7 @@ d4setup()
 			/* we don't try to check per-policy cache state */
 
 			/* it looks ok, now initialize */
-			c->numsets = (1<<c->lg2size) / ((1<<c->lg2blocksize) * c->assoc);
+			c->numsets = (1ull<<c->lg2size) / ((1ull<<c->lg2blocksize) * c->assoc);
 
 			c->stack = calloc (c->numsets+((c->flags&D4F_CCC)!=0),
 					   sizeof(d4stackhead));
