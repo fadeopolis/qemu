@@ -4662,6 +4662,7 @@ int main(int argc, char **argv, char **envp)
         return 0;
     }
 
+    initialize_ifetch();
     tcg_plugin_initialize_all();
 
     if (incoming) {

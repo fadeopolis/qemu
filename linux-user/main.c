@@ -842,6 +842,7 @@ int main(int argc, char **argv, char **envp)
 
     target_cpu_copy_regs(env, regs);
 
+    initialize_ifetch();
     /* initialize plugins to allow tpi_init to be called.
      * Allows plugin to declare their parameters. */
     tcg_plugin_initialize_all();

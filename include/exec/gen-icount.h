@@ -5,11 +5,39 @@
 
 /* Helpers for instruction counting code generation.  */
 
+static TCGOp *count_ifetch_insn;
 static TCGOp *icount_start_insn;
+
+static inline void gen_count_ifetch_start(void)
+{
+    TCGv_i64 count, ninst64;
+    TCGv_i32 ninst;
+
+    count = tcg_temp_new_i64();
+    tcg_gen_ld_i64(count, cpu_env,
+                   -ENV_OFFSET + offsetof(CPUState, ifetch_counter));
+    /* We emit a movi with a dummy immediate argument. Keep the insn index
+     * of the movi so that we later (when we know the actual insn count)
+     * can update the immediate argument with the actual insn count.  */
+    ninst = tcg_const_i32(0xdeadbeef);
+    count_ifetch_insn = tcg_last_op();
+    ninst64 = tcg_temp_new_i64();
+    tcg_gen_extu_i32_i64(ninst64, ninst);
+    tcg_temp_free_i32(ninst);
+    tcg_gen_add_i64(count, count, ninst64);
+    tcg_temp_free_i64(ninst64);
+    tcg_gen_st_i64(count, cpu_env,
+                   -ENV_OFFSET + offsetof(CPUState, ifetch_counter));
+    tcg_temp_free_i64(count);
+}
 
 static inline void gen_tb_start(TranslationBlock *tb)
 {
     TCGv_i32 count, imm;
+
+    if (count_ifetch) {
+        gen_count_ifetch_start();
+    }
 
     tcg_ctx->exitreq_label = gen_new_label();
     if (tb_cflags(tb) & CF_USE_ICOUNT) {
@@ -45,6 +73,12 @@ static inline void gen_tb_start(TranslationBlock *tb)
 
 static inline void gen_tb_end(TranslationBlock *tb, int num_insns)
 {
+    if (count_ifetch) {
+        /* Update the num_insn immediate parameter now that we know
+         * the actual insn count.  */
+        tcg_set_insn_param(count_ifetch_insn, 1, num_insns);
+    }
+
     if (tb_cflags(tb) & CF_USE_ICOUNT) {
         /* Update the num_insn immediate parameter now that we know
          * the actual insn count.  */

@@ -455,7 +455,6 @@ target_ulong do_arm_semihosting(CPUARMState *env)
             return ret;
         }
     case TARGET_SYS_CLOCK:
-        return clock() / (CLOCKS_PER_SEC / 100);
         /* Number of centiseconds since execution started.  */
         if (clock_ifetch) {
             assert(count_ifetch);
