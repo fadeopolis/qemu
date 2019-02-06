@@ -747,38 +747,30 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
         size_t size;
 
         /* look for installed plugin */
-        prefix = dirname(exec_dir);
+        prefix = dirname(g_strdup(exec_dir));
         format = "%s/libexec/" TARGET_NAME "/" EMULATION_MODE "/tcg-plugin-%s.so";
         size = strlen(format) + strlen(prefix) - strlen("%s") +
             strlen(tpi->name) - strlen("%s") + 1;
         path = g_malloc0(size * sizeof(char));
         snprintf(path, size, format, prefix, tpi->name);
-        g_free(exec_dir);
+        g_free(prefix);
 
         struct stat buf;
         if (stat(path, &buf) != 0) {
             /* look for compiled plugin */
-            char *exe_path = NULL;
-#ifdef __linux__
-            exe_path = realpath("/proc/self/exe", NULL);
-#endif
-            assert(exe_path);
-
-            prefix = dirname(exe_path);
             format = "%s/tcg-plugin-%s.so";
-            size = strlen(format) + strlen(prefix) +
+            size = strlen(format) + strlen(exec_dir) +
                    strlen(tpi->name) - 2 * strlen("%s") + 1;
-            snprintf(path, size, format, prefix, tpi->name);
+            snprintf(path, size, format, exec_dir, tpi->name);
 
-            free(exe_path);
         }
-
         if (stat(path, &buf) != 0) /* plugin was not found installed/compiled */
         {
             g_free(path);
             path = NULL;
         }
     }
+    g_free(exec_dir);
 
     if (!path) {
         path = g_strdup(tpi->name);
@@ -796,7 +788,7 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
 
         plugin_fd = open(path, O_RDONLY);
         if (plugin_fd < 0) {
-            fprintf(stderr, "plugin: error: can't open plugin at %s: %s\n",
+            fprintf(stderr, "plugin: error: can't open plugin at '%s': %s\n",
                     path, strerror(errno));
             goto error;
         }
@@ -812,7 +804,7 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
 
         status = fstat(plugin_fd, &plugin_info);
         if (status != 0) {
-            fprintf(stderr, "plugin: error: can't stat file at %s: %s\n", path,
+            fprintf(stderr, "plugin: error: can't stat file at '%s': %s\n", path,
                     strerror(errno));
             goto error;
         }
@@ -823,7 +815,7 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
             size -= count;
             count = sendfile(plugin_instance_fd, plugin_fd, NULL, size);
             if (count < 0) {
-                fprintf(stderr, "plugin: error: can't copy plugin file at %s: %s\n",
+                fprintf(stderr, "plugin: error: can't copy plugin file at '%s': %s\n",
                         path, strerror(errno));
                 goto error;
             }
@@ -843,7 +835,7 @@ static void tcg_plugin_tpi_init(TCGPluginInterface *tpi)
     handle = dlopen(plugin_instance_path, RTLD_NOW | RTLD_GLOBAL);
 #endif
     if (!handle) {
-        fprintf(stderr, "plugin: error: can't load plugin at %s  %s\n",
+        fprintf(stderr, "plugin: error: can't load plugin at '%s': %s\n",
                 plugin_instance_path, dlerror());
         goto error;
     }
