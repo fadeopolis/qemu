@@ -1948,6 +1948,9 @@ if compile_prog "-Werror -fno-gcse" "" ; then
 fi
 
 if test "$static" = "yes" ; then
+  if test "$tcg_plugin" = "yes" ; then
+    error_exit "static and tcg plugins are mutually incompatible"
+  fi
   if test "$modules" = "yes" ; then
     error_exit "static and modules are mutually incompatible"
   fi
