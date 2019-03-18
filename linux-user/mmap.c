@@ -612,7 +612,8 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
 #endif
 
     if ((prot & PROT_EXEC) && (qemu_log_enabled() || tcg_plugin_enabled())) {
-        load_symbols_from_fd(fd, start);
+        assert(start >= offset);
+        load_symbols_from_fd(fd, start - offset);
     }
     char proc_fd[PATH_MAX];
     char filename[PATH_MAX];
