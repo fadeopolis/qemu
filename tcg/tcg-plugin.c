@@ -49,6 +49,10 @@
 #include "sysemu/sysemu.h"   /* max_cpus */
 #include "qemu/log.h"        /* qemu_set_log() */
 
+#if defined(CONFIG_USER_ONLY)
+extern const char *exec_path;
+#endif
+
 /* glib must be included after osdep.h (which we include transitively via tcg.h) */
 #include <glib.h>    /* glib2 objects/functions,*/
 
@@ -63,6 +67,7 @@ static struct {
 
     /* Global configuration. */
     FILE *output;
+    const char *filename;
     uint64_t low_pc;
     uint64_t high_pc;
     bool verbose;
@@ -681,6 +686,14 @@ static void tcg_plugin_state_init(void)
         }
     }
 
+    if (g_plugins_state.filename == NULL) {
+#if !defined(CONFIG_USER_ONLY)
+        g_plugins_state.filename = "<system>";
+#else
+        g_plugins_state.filename = exec_path;
+#endif
+    }
+
     g_plugins_state.verbose = getenv("TPI_VERBOSE") != NULL;
 
     {
@@ -1249,18 +1262,15 @@ end:
     }
 }
 
-#if !defined(CONFIG_USER_ONLY)
 const char *tcg_plugin_get_filename(void)
 {
-    return "<system>";
+    return g_plugins_state.filename;
 }
-#else
-extern const char *exec_path;
-const char *tcg_plugin_get_filename(void)
+
+void tcg_plugin_set_filename(const char *filename)
 {
-    return exec_path;
+    g_plugins_state.filename = filename;
 }
-#endif
 
 /* Return true if at least one plugin was requested.  */
 bool tcg_plugin_enabled(void)

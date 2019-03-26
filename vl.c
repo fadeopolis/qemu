@@ -58,9 +58,11 @@ int main(int argc, char **argv)
 #ifdef CONFIG_TCG_PLUGIN
 extern void tcg_plugin_load(const char *);
 extern void tcg_plugin_initialize_all(void);
+extern void tcg_plugin_set_filename(const char *filename);
 #else
 #define tcg_plugin_load(a) ((void)0)
 #define tcg_plugin_initialize_all() ((void)0)
+#define tcg_plugin_set_filename(f) ((void)0)
 #endif
 
 #include "qemu/error-report.h"
@@ -4408,6 +4410,10 @@ int main(int argc, char **argv, char **envp)
     if (semihosting_enabled() && !semihosting_get_argc() && kernel_filename) {
         /* fall back to the -kernel/-append */
         semihosting_arg_fallback(kernel_filename, kernel_cmdline);
+    }
+
+    if (semihosting_enabled() && semihosting_get_arg(0) != NULL) {
+        tcg_plugin_set_filename(semihosting_get_arg(0));
     }
 
     os_set_line_buffering();
