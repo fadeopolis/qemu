@@ -375,6 +375,7 @@ static inline FILE *tpi_output(const TCGPluginInterface *tpi);
  * Translation block accesors
  * Not static so plugins do not depend on definition of TranslationBlock.
  */
+extern const TranslationBlock *tpi_tb(const TCGPluginInterface *tpi);
 extern uint64_t tpi_tb_address(const TranslationBlock *tb);
 extern uint32_t tpi_tb_size(const TranslationBlock *tb);
 extern uint32_t tpi_tb_icount(const TranslationBlock *tb);

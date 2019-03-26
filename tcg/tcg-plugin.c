@@ -1493,14 +1493,19 @@ uint64_t tpi_tb_address(const TranslationBlock *tb)
     return tb->pc;
 }
 
-extern uint32_t tpi_tb_size(const TranslationBlock *tb)
+uint32_t tpi_tb_size(const TranslationBlock *tb)
 {
     return tb->size;
 }
 
-extern uint32_t tpi_tb_icount(const TranslationBlock *tb)
+uint32_t tpi_tb_icount(const TranslationBlock *tb)
 {
     return tb->icount;
+}
+
+const TranslationBlock *tpi_tb(const TCGPluginInterface *tpi)
+{
+    return tpi->_current_tb;
 }
 
 static void add_parameter_to_plugin(const TCGPluginInterface *tpi,
