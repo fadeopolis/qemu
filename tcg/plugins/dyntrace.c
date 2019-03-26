@@ -42,21 +42,15 @@
 #if defined(TARGET_X86_64)
 #define CS_ARCH CS_ARCH_X86
 #define CS_MODE CS_MODE_64
-#define CS_GROUPS_NAME "x86"
 #elif defined(TARGET_I386)
 #define CS_ARCH CS_ARCH_X86
 #define CS_MODE CS_MODE_32
-#define CS_GROUPS_NAME "x86"
 #elif defined(TARGET_AARCH64)
 #define CS_ARCH CS_ARCH_ARM64
 #define CS_MODE 0
-#define CS_GROUPS_NAME "arm64"
 #elif defined(TARGET_ARM)
 #define CS_ARCH CS_ARCH_ARM
 #define CS_MODE CS_MODE_ARM
-#define CS_GROUPS_NAME "arm"
-#else
-#define CS_GROUPS_NAME ""
 #endif
 
 #endif /* CONFIG_CAPSTONE */
@@ -83,16 +77,65 @@ void tpi_init(TCGPluginInterface *tpi)
 
 #define MAX_PRINT_SIZE 128
 
-static csh cs_handle;
 static FILE *output;
-static cs_insn *insn;
+static cs_insn insn;
+static csh cs_handles[3]; /* ARM requires up to 3 handles */
+
+static void init_cs_handles(const TCGPluginInterface *tpi)
+{
+#if defined(TARGET_X86_64)
+    if (cs_open(CS_ARCH_X86, CS_MODE_64, &cs_handles[0]) != CS_ERR_OK)
+        abort();
+#endif
+#if defined(TARGET_I386)
+    if (cs_open(CS_ARCH_X86, CS_MODE_32, &cs_handles[0]) != CS_ERR_OK)
+        abort();
+#endif
+#if defined(TARGET_ARM) || defined(TARGET_AARCH64)
+    if (cs_open(CS_ARCH_ARM, CS_MODE_ARM, &cs_handles[0]) != CS_ERR_OK)
+        abort();
+    if (cs_open(CS_ARCH_ARM, CS_MODE_ARM + CS_MODE_THUMB, &cs_handles[1]) != CS_ERR_OK)
+        abort();
+#if defined(TARGET_AARCH64)
+    if (cs_open(CS_ARCH_ARM64, 0, &cs_handles[2]) != CS_ERR_OK)
+        abort();
+#endif
+#endif
+}
+
+static void fini_cs_handles(const TCGPluginInterface *tpi)
+{
+    int i;
+    for (i = 0; i < sizeof(cs_handles)/sizeof(*cs_handles); i++) {
+        if (cs_handles[i] != 0) cs_close(&cs_handles[i]);
+    }
+}
+
+static csh get_cs_handle(const TCGPluginInterface *tpi)
+{
+    csh cs_handle = cs_handles[0];
+
+#if defined(TARGET_ARM) || defined(TARGET_AARCH64)
+    if (ARM_TBFLAG_THUMB(tpi_tb(tpi)->flags)) {
+        cs_handle = cs_handles[1];
+    }
+#if defined(TARGET_AARCH64)
+    if (ARM_TBFLAG_AARCH64_STATE(tpi_tb(tpi)->flags)) {
+        cs_handle = cs_handles[2];
+    }
+#endif
+#endif
+    return cs_handle;
+}
+
 
 static void write_str(uint64_t str_intptr)
 {
     char *str = (char *)(intptr_t)str_intptr;
-
     fwrite(str, sizeof(char), strlen(str), output);
+    fflush(output);
 }
+
 
 static void gen_printf_insn(const TCGPluginInterface *tpi, cs_insn *insn)
 {
@@ -140,36 +183,32 @@ static void after_gen_opc(const TCGPluginInterface *tpi, const TPIOpCode *tpi_op
     const uint8_t *code = (const uint8_t *)(intptr_t)tpi_guest_ptr(tpi, tpi_opcode->pc);
     size_t size = 4096;
     uint64_t address = tpi_opcode->pc;
-
-    if (tpi_opcode->operator != INDEX_op_insn_start) return;
     
-    decoded = cs_disasm_iter(cs_handle,
-                             &code, &size, &address, insn);
+    if (tpi_opcode->operator != INDEX_op_insn_start) return;
+
+    decoded = cs_disasm_iter(get_cs_handle(tpi),
+                             &code, &size, &address, &insn);
     if (decoded) {
-        gen_printf_insn(tpi, insn);
+        gen_printf_insn(tpi, &insn);
     } else {
         fprintf(output, "# WARNING: tcg/plugins/dyntrace: unable to disassemble instruction at PC 0x%"PRIx64"\n", tpi_opcode->pc);
     }
 }
 
+
 static void cpus_stopped(const TCGPluginInterface *tpi)
 {
-    cs_free(insn, 1);
-    cs_close(&cs_handle);
+    fini_cs_handles(tpi);
 }
+
 
 void tpi_init(TCGPluginInterface *tpi)
 {
     TPI_INIT_VERSION_GENERIC(tpi);
     TPI_DECL_FUNC_1(tpi, write_str, void, i64);
 
-    if (cs_open(CS_ARCH, CS_MODE, &cs_handle) != CS_ERR_OK)
-        abort();
-
-    cs_option(cs_handle, CS_OPT_DETAIL, CS_OPT_ON);
-
+    init_cs_handles(tpi);
     output = tpi->output;
-    insn = cs_malloc(cs_handle);
 
     tpi->after_gen_opc  = after_gen_opc;
     tpi->cpus_stopped  = cpus_stopped;
