@@ -96,6 +96,57 @@ void tpi_init(TCGPluginInterface *tpi)
 }
 #else
 
+/* Global capstone handles. Not synchronized. */
+static csh cs_handles[3]; /* ARM requires up to 3 handles */
+
+static void init_cs_handles(const TCGPluginInterface *tpi)
+{
+#if defined(TARGET_X86_64)
+    if (cs_open(CS_ARCH_X86, CS_MODE_64, &cs_handles[0]) != CS_ERR_OK)
+        abort();
+#endif
+#if defined(TARGET_I386)
+    if (cs_open(CS_ARCH_X86, CS_MODE_32, &cs_handles[0]) != CS_ERR_OK)
+        abort();
+#endif
+#if defined(TARGET_ARM) || defined(TARGET_AARCH64)
+    if (cs_open(CS_ARCH_ARM, CS_MODE_ARM, &cs_handles[0]) != CS_ERR_OK)
+        abort();
+    if (cs_open(CS_ARCH_ARM, CS_MODE_ARM + CS_MODE_THUMB, &cs_handles[1]) != CS_ERR_OK)
+        abort();
+#if defined(TARGET_AARCH64)
+    if (cs_open(CS_ARCH_ARM64, 0, &cs_handles[2]) != CS_ERR_OK)
+        abort();
+#endif
+#endif
+}
+
+static void fini_cs_handles(const TCGPluginInterface *tpi)
+{
+    int i;
+    for (i = 0; i < sizeof(cs_handles)/sizeof(*cs_handles); i++) {
+        if (cs_handles[i] != 0) cs_close(&cs_handles[i]);
+    }
+}
+
+static csh get_cs_handle(const TCGPluginInterface *tpi)
+{
+    csh cs_handle = cs_handles[0];
+
+#if defined(TARGET_ARM) || defined(TARGET_AARCH64)
+    if (ARM_TBFLAG_THUMB(tpi_tb(tpi)->flags)) {
+        cs_handle = cs_handles[1];
+    }
+#if defined(TARGET_AARCH64)
+    if (ARM_TBFLAG_AARCH64_STATE(tpi_tb(tpi)->flags)) {
+        cs_handle = cs_handles[2];
+    }
+#endif
+#endif
+    return cs_handle;
+}
+
+
 /* Maintains information for a recorded mnemonic or group string. */
 typedef struct
 {
@@ -104,9 +155,6 @@ typedef struct
     int cs_idx;      /* Capstone op/grp idx. */
 } str_hash_entry_t;
 
-
-/* Global capstone handle. Not synchronized. */
-static csh cs_handle;
 
 /* Shared globals. Must be synchrionized. */
 static int op_current_idx;
@@ -117,8 +165,8 @@ static int grp_current_idx;
 static uint64_t grp_count[GRP_MAX_COUNT];
 static GHashTable *grp_hash;
 static str_hash_entry_t *grp_entries[INS_MAX_COUNT];
-static uint64_t ld_bytes;
-static uint64_t st_bytes;
+/* static uint64_t ld_bytes; */
+/* static uint64_t st_bytes; */
 
 static void free_str_hash_entry(gpointer data)
 {
@@ -159,36 +207,33 @@ static void cpus_stopped(const TCGPluginInterface *tpi)
                 grp_entries[i]->name,
                 grp_count[grp_entries[i]->serial_idx]);
     }
-    fprintf(tpi->output, "\nloaded_bytes: %"PRIu64"\n", ld_bytes);
-    fprintf(tpi->output, "\nstored_bytes: %"PRIu64"\n", st_bytes);
+    /* fprintf(tpi->output, "\nloaded_bytes: %"PRIu64"\n", ld_bytes); */
+    /* fprintf(tpi->output, "\nstored_bytes: %"PRIu64"\n", st_bytes); */
     fprintf(tpi->output, "\ninstructions_total: %"PRIu64"\n", icount_total);
     fflush(tpi->output);
     g_hash_table_destroy(op_hash);
     g_hash_table_destroy(grp_hash);
 
+    fini_cs_handles(tpi);
 }
 
 static void update_counter(uint64_t counter_ptr, uint64_t count)
 {
-    atomic_add((uint64_t *)counter_ptr, count);
+    atomic_add((uint64_t *)counter_ptr, 1);
 }
 
-static void gen_update_counter(const TCGPluginInterface *tpi, uint64_t *counter_ptr, uint64_t count)
+static void gen_update_counter(const TCGPluginInterface *tpi, uint64_t *counter_ptr)
 {
-    TCGTemp *args[3];
+    TCGTemp *args[1];
     TCGv_i64 tcgv_counter_ptr;
-    TCGv_i64 tcgv_count;
 
     tcgv_counter_ptr = tcg_const_i64((uint64_t)(intptr_t)counter_ptr);
-    tcgv_count = tcg_const_i64(1);
 
     args[0] = tcgv_i64_temp(tcgv_counter_ptr);
-    args[1] = tcgv_i64_temp(tcgv_count);
 
-    tcg_gen_callN(update_counter, TCG_CALL_DUMMY_ARG, 2, args);
+    tcg_gen_callN(update_counter, TCG_CALL_DUMMY_ARG, 1, args);
 
     tcg_temp_free_i64(tcgv_counter_ptr);
-    tcg_temp_free_i64(tcgv_count);
 }
 
 static int insert_op_entry(const char *op_name, int cs_op_idx)
@@ -238,32 +283,36 @@ static void after_gen_opc(const TCGPluginInterface *tpi, const TPIOpCode *tpi_op
 {
     size_t count;
     cs_insn *insns;
+    csh cs_handle;
 
     switch(tpi_opcode->operator) {
-    case INDEX_op_qemu_ld_i32:
-    case INDEX_op_qemu_ld_i64:
-        gen_update_counter(tpi, &ld_bytes,
-                           1 << (get_memop(tpi_opcode->opargs[2]) & MO_SIZE));
-        return;
+        /* Disable bytes count for now, issue with gen_update_counter with 2 arguments. */
+    /* case INDEX_op_qemu_ld_i32: */
+    /* case INDEX_op_qemu_ld_i64: */
+    /*     gen_update_counter(tpi, &ld_bytes, */
+    /*                        1 << (get_memop(tpi_opcode->opargs[2]) & MO_SIZE)); */
+    /*     return; */
 
-    case INDEX_op_qemu_st_i32:
-    case INDEX_op_qemu_st_i64:
-        gen_update_counter(tpi, &st_bytes,
-                           1 << (get_memop(tpi_opcode->opargs[2]) & MO_SIZE));
-        return;
+    /* case INDEX_op_qemu_st_i32: */
+    /* case INDEX_op_qemu_st_i64: */
+    /*     gen_update_counter(tpi, &st_bytes, */
+    /*                        1 << (get_memop(tpi_opcode->opargs[2]) & MO_SIZE)); */
+    /*     return; */
     case INDEX_op_insn_start:
         break;
     default:
         return;
     }
 
+    cs_handle = get_cs_handle(tpi);
+    cs_option(cs_handle, CS_OPT_DETAIL, CS_OPT_ON);
     count = cs_disasm(cs_handle, (void *)(intptr_t)tpi_guest_ptr(tpi, tpi_opcode->pc), 16,
                       tpi_opcode->pc, 1, &insns);
     if (count > 0) {
         cs_insn *insn = &insns[0];
         cs_detail *detail = insn->detail;
         int serial_idx = insert_op_entry(insn->mnemonic, insn->id);
-        gen_update_counter(tpi, &op_count[serial_idx], 1);
+        gen_update_counter(tpi, &op_count[serial_idx]);
         if (detail->groups_count > 0) {
             int n;
             for (n = 0; n < detail->groups_count; n++) {
@@ -271,12 +320,12 @@ static void after_gen_opc(const TCGPluginInterface *tpi, const TPIOpCode *tpi_op
                 int serial_idx;
                 assert(group < CS_GRP_COUNT);
                 serial_idx = insert_grp_entry(cs_group_name(cs_handle, group), group);
-                gen_update_counter(tpi, &grp_count[serial_idx], 1);
+                gen_update_counter(tpi, &grp_count[serial_idx]);
             }
         } else {
             /* If not in any group, add to group 0 (nogroup). */
             int serial_idx = insert_grp_entry("nogroup", 0);
-            gen_update_counter(tpi, &grp_count[serial_idx], 1);
+            gen_update_counter(tpi, &grp_count[serial_idx]);
         }
         cs_free(insn, count);
     } else {
@@ -286,20 +335,18 @@ static void after_gen_opc(const TCGPluginInterface *tpi, const TPIOpCode *tpi_op
         fprintf(tpi->output, "# WARNING: tcg/plugins/dyncount: unable to disassemble instruction at PC 0x%"PRIx64" (%s: %s + 0x%"PRIx64")\n", tpi_opcode->pc, filename, symbol, tpi_opcode->pc - address);
         int serial_op_idx = insert_op_entry("_unknown_", 0);
         int serial_grp_idx = insert_op_entry("nogroup", 0);
-        gen_update_counter(tpi, &op_count[serial_op_idx], 1);
-        gen_update_counter(tpi, &grp_count[serial_grp_idx], 1);
+        gen_update_counter(tpi, &op_count[serial_op_idx]);
+        fprintf(tpi->output, "%s: Generated update counter at: %p (idx: %d)\n", __FUNCTION__, &op_count[serial_op_idx], serial_op_idx);
+        gen_update_counter(tpi, &grp_count[serial_grp_idx]);
     }
 }
 
 void tpi_init(TCGPluginInterface *tpi)
 {
     TPI_INIT_VERSION_GENERIC(tpi);
-    TPI_DECL_FUNC_2(tpi, update_counter, void, i64, i64);
+    TPI_DECL_FUNC_1(tpi, update_counter, void, i64);
 
-    if (cs_open(CS_ARCH, CS_MODE, &cs_handle) != CS_ERR_OK)
-        abort();
-
-    cs_option(cs_handle, CS_OPT_DETAIL, CS_OPT_ON);
+    init_cs_handles(tpi);
     
     tpi->cpus_stopped = cpus_stopped;
     tpi->after_gen_opc = after_gen_opc;
