@@ -305,7 +305,7 @@ private:
         register_plugin(plugin);                                               \
         return true;                                                           \
     }                                                                          \
-    static bool register_##class_name##_ = register_##class_name()
+    static bool __attribute__((unused)) register_##class_name##_ = register_##class_name()
 
 // function to register an existing plugin
 void register_plugin(plugin& p);
