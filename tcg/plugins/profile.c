@@ -67,8 +67,10 @@ static void pre_tb_helper_data(const TCGPluginInterface *tpi,
 
     lookup_symbol2(address, &hash_key.symbol, &hash_key.filename);
 
-    if (hash_key.symbol[0] == '\0') {
+    if (hash_key.symbol == NULL || hash_key.symbol[0] == '\0') {
         hash_key.symbol = "<unknown>";
+    }
+    if (hash_key.filename == NULL || hash_key.filename[0] == '\0') {
         hash_key.filename = "<unknown>";
     }
 
