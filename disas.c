@@ -84,6 +84,19 @@ bool find_symbol_bounds(const char *name, bool is_elf_class64, uint64_t *start, 
   return false;
 }
 
+target_ulong
+translate_pc(target_ulong address_in_file, const char *filename) {
+  struct syminfo *syminfo;
+  target_ulong ret = address_in_file;
+  for (syminfo = syminfos; syminfo; syminfo = syminfo->next) {
+    if (!strcmp(syminfo->filename, filename)) {
+      return ret + syminfo->load_bias;
+    }
+  }
+
+  // Not found
+  return 0;
+}
 
 /* Get LENGTH bytes from info's buffer, at target address memaddr.
    Transfer them to myaddr.  */

@@ -23,6 +23,9 @@ bool lookup_symbol5(target_ulong orig_addr, const char **symbol, const char **fi
 
 /* Look up symbol bounds by name for debugging purpose.  Returns false if unknown. */
 bool find_symbol_bounds(const char *name, bool is_elf_class64, uint64_t *start, uint64_t *size);
+
+/* Look up for the qemu-translated PC (with load bias) */
+target_ulong translate_pc(target_ulong address_in_file, const char *filename);
 #endif
 
 struct syminfo;
